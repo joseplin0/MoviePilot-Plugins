@@ -34,6 +34,7 @@ class SubscribeAutoSort(_PluginBase):
 
     # 配置键常量
     TV_ORDER_CONFIG_KEY = "SubscribeTvOrder"
+    MOVIE_ORDER_CONFIG_KEY = "SubscribeMovieOrder"
     # 加载顺序
     plugin_order = 10
     # 可使用的用户级别
@@ -249,57 +250,21 @@ class SubscribeAutoSort(_PluginBase):
     def get_page(self) -> List[dict]:
         pass
 
-    def _call_user_config_api(self, method: str = "GET", data: Any = None, config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str,str]]:
-        """
-        调用用户配置API
-        :param method: HTTP方法，GET或POST
-        :param data: 请求数据，仅POST时使用
-        :param config_key: 配置键名，默认为 SubscribeTvOrder
-        :return: 配置数据
-        """
-        # 构建API URL
-        api_url = f"http://localhost:{settings.PORT}{settings.API_V1_STR}/user/config/{config_key}"
-        logger.debug(f"调用用户配置API: {api_url}",method)
-        request = RequestUtils()
-        # 根据方法发送请求
-        if method.upper() == "GET":
-            response = request.get_res(api_url)
-        else:
-            response = request.post_res(api_url, json=data)
-        
-        if response and response.status_code == 200:
-            result = response.json()
-            if result.get("success"):
-                if method.upper() == "GET":
-                    # GET请求返回配置数据
-                    if "data" in result and "value" in result["data"]:
-                        logger.info(f"通过接口成功获取订阅排序配置: {config_key}")
-                        # 如果 value 是 null，则返回 []
-                        return result["data"]["value"] or []
-                    else:
-                        # POST请求返回成功状态
-                        logger.info(f"订阅排序配置已通过接口更新: {config_key}")
-                        return data
-            else:
-                logger.error(f"接口返回失败: {result}")
-                return None
-        else:
-            logger.error(f"通过接口操作订阅排序配置失败: {response}")
-            return None
 
-    def get_user_config(self, config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str,str]]:
+    def get_user_config(self, username:str,config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str,str]]:
         """
         获取订阅排序配置
         :param config_key: 配置键名，默认为SubscribeTvOrder
         """
-        return self._call_user_config_api("GET", config_key=config_key)
-    def set_user_config(self, value: List[Dict[str,str]], config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str,str]]:
+        return self.userConfig_oper.get(username, config_key=config_key)
+
+    def set_user_config(self, username:str, value: List[Dict[str,str]], config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str,str]]:
         """
         设置订阅排序配置
         :param value: 配置值
         :param config_key: 配置键名，默认为SubscribeTvOrder
         """
-        return self._call_user_config_api("POST", value, config_key=config_key)
+        return self.userConfig_oper.set(username, value, config_key=config_key)
 
     def get_subscribe_movies(self):
         """
