@@ -1,11 +1,9 @@
 from datetime import datetime,timedelta
 from typing import Any, List, Dict, Tuple, Optional
 from app.plugins import _PluginBase
-
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-
 from app.utils.http import RequestUtils
 from app.core.config import settings
 from app.log import logger
@@ -13,9 +11,6 @@ from app.chain.tmdb import TmdbChain
 from app.db.subscribe_oper import SubscribeOper
 from app.db.userconfig_oper import UserConfigOper
 from app.db.models.subscribe import Subscribe
-
-
-
 
 class SubscribeAutoSort(_PluginBase):
     # 插件名称
@@ -65,7 +60,6 @@ class SubscribeAutoSort(_PluginBase):
         self._cron = config.get("cron")
         self._sort_order = config.get("sort_order", "asc")
 
-        
         if self._enabled:
             logger.info(f"订阅自动排序插件已启用")
             if self._onlyonce:
@@ -175,6 +169,7 @@ class SubscribeAutoSort(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -186,7 +181,34 @@ class SubscribeAutoSort(_PluginBase):
                                         }
                                     }
                                 ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'sort_order',
+                                            'label': '排序方向',
+                                            'items': [
+                                                {
+                                                    'title': '正序（由前到后）',
+                                                    'value': 'asc'
+                                                },
+                                                {
+                                                    'title': '倒序（由后到前）',
+                                                    'value': 'desc'
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
                             }
+                            
                         ]
                     },
                     {
@@ -220,6 +242,7 @@ class SubscribeAutoSort(_PluginBase):
         ], {
             "enabled": False,
             "only_once": False,
+            "sort_order": "asc",
             "cron": ""
         }
 
@@ -343,17 +366,20 @@ class SubscribeAutoSort(_PluginBase):
                 logger.error(f"获取订阅 {subscribe.name} (ID: {subscribe.id}) 的上映日期失败: {str(e)}")
                 subscribes_without_air_date.append(subscribe)
         
-        # 根据上映日期对有上映日期的订阅进行正序排序
+        # 根据上映日期对有上映日期的订阅进行排序
+        reverse = self._sort_order == "desc"
         sorted_by_air_date = sorted(
             subscribes_with_air_date,
-            key=lambda x: subscribe_air_dates.get(x.id)
+            key=lambda x: subscribe_air_dates.get(x.id),
+            reverse=reverse
         )
-        logger.info(f"按上映日期正序排序后的订阅ID: {[s.id for s in sorted_by_air_date]}")
+        order_text = "正序" if self._sort_order == "asc" else "倒序"
+        logger.info(f"按上映日期{order_text}排序后的订阅ID: {[s.id for s in sorted_by_air_date]}")
         
-        # 创建新的排序配置：有上映日期的按正序排序，没有上映日期的保持原顺序
+        # 创建新的排序配置：有上映日期的按指定顺序排序，没有上映日期的保持原顺序
         new_tv_orders = []
         
-        # 先添加按上映日期正序排序的订阅
+        # 先添加按上映日期排序的订阅
         for subscribe in sorted_by_air_date:
             if {"id": subscribe.id} not in new_tv_orders:
                 new_tv_orders.append({"id": subscribe.id})
@@ -372,8 +398,8 @@ class SubscribeAutoSort(_PluginBase):
         self.set_user_config(new_tv_orders)
         logger.info(f"排序配置已保存，共 {len(new_tv_orders)} 个订阅")
         
-        logger.info("订阅自动排序任务执行完成")
-        return f"订阅自动排序执行完成，共处理 {len(subscribes)} 个订阅"
+        logger.info(f"订阅自动排序任务执行完成，排序方向: {order_text}")
+        return f"订阅自动排序执行完成，共处理 {len(subscribes)} 个订阅，排序方向: {order_text}"
     
     def get_tv_air_date(self, subscribe: Subscribe) -> Optional[datetime]:
         """
