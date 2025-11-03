@@ -11,6 +11,8 @@ from app.chain.tmdb import TmdbChain
 from app.db.subscribe_oper import SubscribeOper
 from app.db.userconfig_oper import UserConfigOper
 from app.db.models.subscribe import Subscribe
+from app.db.user_oper import UserOper
+
 
 class SubscribeAutoSort(_PluginBase):
     # 插件名称
@@ -45,6 +47,7 @@ class SubscribeAutoSort(_PluginBase):
     _onlyonce = False
     _cron = None
     _sort_order = "asc"  # 排序方向：asc-正序，desc-倒序
+    _users = []  # 选择的用户列表
     subscribe_oper = None
 
     def init_plugin(self, config: dict = None):
@@ -52,6 +55,7 @@ class SubscribeAutoSort(_PluginBase):
         # 初始化数据库操作
         self.subscribe_oper = SubscribeOper()
         self.userConfig_oper = UserConfigOper()
+        self.user_oper = UserOper()
         # 初始化插件
         if not config:
             return
@@ -59,7 +63,8 @@ class SubscribeAutoSort(_PluginBase):
         self._enabled = config.get("enabled")
         self._onlyonce = config.get("only_once")
         self._cron = config.get("cron")
-        self._sort_order = config.get("sort_order", "asc")
+        self._sort_order = config.get("sort_order")
+        self._users = config.get("users") or []
 
         if self._enabled:
             logger.info(f"订阅自动排序插件已启用")
@@ -75,7 +80,8 @@ class SubscribeAutoSort(_PluginBase):
                     "only_once": False,
                     "enabled": self._enabled,
                     "cron": self._cron,
-                    "sort_order": self._sort_order
+                    "sort_order": self._sort_order,
+                    "users": self._users
                 })
                 if self._scheduler.get_jobs():
                     # 启动服务
@@ -122,6 +128,9 @@ class SubscribeAutoSort(_PluginBase):
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
+        all_users = self.user_oper.list()
+        user_options = [{"title": user.name, "value": user.name} for user in all_users]
+        
         return [
             {
                 'component': 'VForm',
@@ -183,7 +192,7 @@ class SubscribeAutoSort(_PluginBase):
                                     }
                                 ]
                             },
-                            {
+                             {
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
@@ -209,7 +218,30 @@ class SubscribeAutoSort(_PluginBase):
                                     }
                                 ]
                             }
-                            
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'users',
+                                            'label': '选择用户',
+                                            'multiple': True,
+                                            'chips': True,
+                                            'items': user_options
+                                        }
+                                    }
+                                ]
+                            }
                         ]
                     },
                     {
@@ -244,27 +276,31 @@ class SubscribeAutoSort(_PluginBase):
             "enabled": False,
             "only_once": False,
             "sort_order": "asc",
-            "cron": ""
+            "cron": "",
+            "users": []
         }
 
     def get_page(self) -> List[dict]:
         pass
 
 
-    def get_user_config(self, username:str,config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str,str]]:
+    def get_user_config(self, username: str, config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str, str]]:
         """
         获取订阅排序配置
+        :param username: 用户名
         :param config_key: 配置键名，默认为SubscribeTvOrder
         """
-        return self.userConfig_oper.get(username, config_key=config_key)
+        return self.userConfig_oper.get(username, config_key)
 
-    def set_user_config(self, username:str, value: List[Dict[str,str]], config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str,str]]:
+    def set_user_config(self, username: str, value: List[Dict[str, str]], config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str, str]]:
         """
         设置订阅排序配置
+        :param username: 用户名
         :param value: 配置值
         :param config_key: 配置键名，默认为SubscribeTvOrder
         """
-        return self.userConfig_oper.set(username, value, config_key=config_key)
+        return self.userConfig_oper.set(username, config_key, value)
+
 
     def get_subscribe_movies(self):
         """
@@ -283,27 +319,19 @@ class SubscribeAutoSort(_PluginBase):
         logger.info(f"获取到电视剧订阅{subscribes}")
         return subscribes or []
 
-    def subscribe_auto_sort(self) -> str:
-        """
-        订阅自动排序
-        """
-        logger.info("开始执行订阅自动排序任务")
-        
-        # 获取所有订阅
-        subscribes = self.get_subscribe_tvs()
 
-        if len(subscribes) <= 1:
-            logger.info("请添加更多订阅！")
-            return
-        
-        logger.info(f"开始处理 {len(subscribes)} 个订阅的排序")
-        
+    def sort_queue_by_user(self, subscribes, username: str) -> str:
+        """
+        根据用户的排序配置对订阅列表进行排序
+        :param subscribes: 订阅列表
+        :param username: 用户名
+        :return: 排序后的订阅列表
+        """
         # 获取当前的排序配置
-        tv_orders = self.get_user_config()
-        
-        # if tv_orders is None:
-        #     # 如果获取配置失败，记录错误并返回
-        #     return "获取订阅排序配置失败，任务终止"
+        tv_orders = self.get_user_config(username)
+        if tv_orders is None:
+            # 如果获取配置失败，记录错误并返回
+            return "获取订阅排序配置失败，任务终止"
         
         logger.info(f"当前排序配置: {tv_orders}")
         if not tv_orders:
@@ -360,12 +388,39 @@ class SubscribeAutoSort(_PluginBase):
         logger.info(f"合并后的新排序配置: {new_tv_orders}")
         
         # 保存新的排序配置
-        self.set_user_config(new_tv_orders)
+        self.set_user_config(username, new_tv_orders)
         logger.info(f"排序配置已保存，共 {len(new_tv_orders)} 个订阅")
         
         logger.info(f"订阅自动排序任务执行完成，排序方向: {order_text}")
         return f"订阅自动排序执行完成，共处理 {len(subscribes)} 个订阅，排序方向: {order_text}"
-    
+
+    def subscribe_auto_sort(self) -> str:
+        """
+        订阅自动排序
+        """
+        logger.info("开始执行订阅自动排序任务")
+        
+        # 确定要处理的用户列表
+        if not self._users:
+            return "未配置用户，任务终止"
+
+        # 获取所有订阅
+        subscribes = self.get_subscribe_tvs()
+        if len(subscribes) <= 1:
+            logger.info("请添加更多订阅！")
+            return
+        
+        logger.info(f"将处理以下用户的订阅: {self._users}")
+        logger.info(f"开始处理 {len(subscribes)} 个订阅的排序")
+
+        for username in self._users:
+            logger.info(f"开始处理用户 {username} 的订阅")
+            self.sort_queue_by_user(subscribes, username)
+            logger.info(f"用户 {username} 的订阅排序任务已完成")
+        logger.info("所有用户的订阅排序任务已完成")
+
+        return "订阅自动排序任务全部完成"
+
     def get_tv_air_date(self, subscribe: Subscribe) -> Optional[datetime]:
         """
         获取电视剧订阅的上映日期
@@ -382,7 +437,7 @@ class SubscribeAutoSort(_PluginBase):
         except Exception as e:
             logger.error(f"获取订阅 {subscribe.name} 剧集信息失败: {str(e)}")
             return None
-    
+
     def get_service(self) -> List[Dict[str, Any]]:
         """
         注册插件公共服务
