@@ -4,10 +4,10 @@ from app.plugins import _PluginBase
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from app.utils.http import RequestUtils
+from app.schemas import MediaType
 from app.core.config import settings
 from app.log import logger
-from app.chain.tmdb import TmdbChain
+from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.db.subscribe_oper import SubscribeOper
 from app.db.userconfig_oper import UserConfigOper
 from app.db.models.subscribe import Subscribe
@@ -53,7 +53,7 @@ class SubscribeAutoSort(_PluginBase):
     _air_date_cache = {}
 
     def init_plugin(self, config: dict = None):
-        self.tmdb_chain = TmdbChain()
+        self.tmdb = TmdbApi()
         # 初始化数据库操作
         self.subscribe_oper = SubscribeOper()
         self.userConfig_oper = UserConfigOper()
@@ -329,7 +329,7 @@ class SubscribeAutoSort(_PluginBase):
         return subscribes or []
 
 
-    def sort_queue_by_user(self, username: str,mtype: str = "电视剧") -> str:
+    def sort_queue_by_user(self, username: str,mtype: str = MediaType.TV.value) -> str:
         """
         根据用户的排序配置对订阅列表进行排序
         :param username: 用户名
@@ -453,7 +453,7 @@ class SubscribeAutoSort(_PluginBase):
         
         for subscribe in subscribes:
             try:
-                air_date = self._get_tv_air_date_from_api(subscribe)
+                air_date = self._get_air_date_from_api(subscribe)
                 if air_date:
                     self._air_date_cache[subscribe.id] = air_date
                     logger.info(f"预获取订阅 {subscribe.name} (ID: {subscribe.id}) 的上映日期: {air_date}")
@@ -464,38 +464,34 @@ class SubscribeAutoSort(_PluginBase):
         
         logger.info(f"预获取完成，共 {len(self._air_date_cache)} 个订阅的上映日期")
     
-    def _get_tv_air_date_from_api(self, subscribe: Subscribe) -> Optional[datetime]:
+    def _get_air_date_from_api(self, subscribe: Subscribe) -> Optional[datetime]:
         """
-        从API获取电视剧订阅的上映日期
+        从API获取订阅的上映日期
         :param subscribe: 订阅信息
         :return: 上映日期，如果获取失败返回 None
         """
         try:
-            episodes = self.tmdb_chain.tmdb_episodes(subscribe.tmdbid, subscribe.season)
-            if episodes and len(episodes) > 0:
-                return episodes[0].air_date
-            else:
-                logger.warning(f"订阅 {subscribe.name} (TMDB ID: {subscribe.tmdbid}) 没有剧集信息")
-                return None
+            logger.info(f"从API获取{subscribe.type}订阅 {subscribe.name} 的上映日期")
+            if(subscribe.type == MediaType.TV.value):
+                season = self.tmdb.get_tv_season_detail(subscribe.tmdbid, subscribe.season)
+                logger.info(f"获取{subscribe.type}订阅 {subscribe.name} 剧集上映日期: {season.get('air_date') if season else '无'}")
+                if season and season.get('air_date'):
+                    return season.get('air_date')
+                else:
+                    logger.warning(f"{subscribe.type}订阅 {subscribe.name} (TMDB ID: {subscribe.tmdbid}) 没有剧集信息")
+                    return None
+            elif(subscribe.type == MediaType.MOVIE.value):
+                movie = self.tmdb.get_info(MediaType.MOVIE,subscribe.tmdbid)
+                logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {movie.get('release_date') if movie else '无'}")
+                if movie and movie.get('release_date'):
+                    return movie.get('release_date')
+                else:
+                    logger.warning(f"{subscribe.type}订阅 {subscribe.name} (TMDB ID: {subscribe.tmdbid}) 没有上映日期信息")
+                    return None
         except Exception as e:
-            logger.error(f"获取订阅 {subscribe.name} 剧集信息失败: {str(e)}")
+            logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 剧集信息失败: {str(e)}")
             return None
     
-    def get_tv_air_date(self, subscribe: Subscribe) -> Optional[datetime]:
-        """
-        获取电视剧订阅的上映日期（优先使用缓存）
-        :param subscribe: 订阅信息
-        :return: 上映日期，如果获取失败返回 None
-        """
-        # 先检查缓存
-        if subscribe.id in self._air_date_cache:
-            return self._air_date_cache[subscribe.id]
-        
-        # 缓存中没有，从API获取
-        air_date = self._get_tv_air_date_from_api(subscribe)
-        if air_date:
-            self._air_date_cache[subscribe.id] = air_date
-        return air_date
 
     def get_service(self) -> List[Dict[str, Any]]:
         """
