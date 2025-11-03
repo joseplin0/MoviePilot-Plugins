@@ -1,0 +1,13 @@
+"subscribeAutoSort": {
+  "name": "订阅自动排序",
+  "description": "根据订阅播放日期进行排序",
+  "labels": "订阅",
+  "version": "1.0.0",
+  "icon": "https://raw.githubusercontent.com/madrays/MoviePilot-Plugins/main/icons/2fa.png",
+  "author": "joseplin0",
+  "level": 1,
+  "v2": true,
+  "history": {
+    "v1.0.0": "自动排序"
+  }
+},
