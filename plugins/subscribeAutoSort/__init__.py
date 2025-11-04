@@ -320,22 +320,24 @@ class SubscribeAutoSort(_PluginBase):
         pass
 
 
-    def get_user_config(self, username: str, config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str, str]]:
+    def get_user_config(self, username: str, mtype: MediaType) -> List[Dict[str, str]]:
         """
         获取订阅排序配置
         :param username: 用户名
-        :param config_key: 配置键名，默认为SubscribeTvOrder
+        :param mtype: 订阅类型
         """
-        return self.userConfig_oper.get(username, config_key)
+        key = self.TV_ORDER_CONFIG_KEY if mtype == MediaType.TV.value else self.MOVIE_ORDER_CONFIG_KEY
+        return self.userConfig_oper.get(username,key)
 
-    def set_user_config(self, username: str, value: List[Dict[str, str]], config_key: str = TV_ORDER_CONFIG_KEY) -> List[Dict[str, str]]:
+    def set_user_config(self, username: str, value: List[Dict[str, str]], mtype: str) -> List[Dict[str, str]]:
         """
         设置订阅排序配置
         :param username: 用户名
         :param value: 配置值
-        :param config_key: 配置键名，默认为SubscribeTvOrder
+        :param mtype: 订阅类型
         """
-        return self.userConfig_oper.set(username, config_key, value)
+        key = self.TV_ORDER_CONFIG_KEY if mtype == MediaType.TV.value else self.MOVIE_ORDER_CONFIG_KEY
+        return self.userConfig_oper.set(username, key, value)
 
     def get_subscribe_all(self) -> List[Subscribe]:
         """
@@ -358,7 +360,7 @@ class SubscribeAutoSort(_PluginBase):
         else:
             # 普通用户只获取自己的订阅
             subscribes = self.subscribe_oper.list_by_username(mtype=mtype, username=username)
-        logger.info(f"用户：{username} 获取到${mtype}订阅{subscribes}")
+        logger.info(f"用户：{username} 获取到{mtype}订阅{subscribes}")
         return subscribes or []
 
 
@@ -372,22 +374,22 @@ class SubscribeAutoSort(_PluginBase):
         # 获取所有订阅
         subscribes = self.get_subscribe_by_user(username,mtype)
         if len(subscribes) <= 1:
-            logger.info(f"用户：{username} 的订阅数量不足，无需排序")
+            logger.info(f"用户：{username} 的{mtype}订阅数量不足，无需排序")
             return
 
-        logger.info(f"开始处理 {len(subscribes)} 个订阅的排序")
+        logger.info(f"开始处理 {len(subscribes)} 个{mtype}订阅的排序")
         # 获取当前的排序配置
-        orders = self.get_user_config(username)
+        orders = self.get_user_config(username,mtype)
         if orders is None:
             # 如果获取配置失败，记录错误并返回
             return "获取订阅排序配置失败，任务终止"
         
-        logger.info(f"当前排序配置: {orders}")
+        logger.info(f"当前{mtype}排序配置: {orders}")
         if not orders:
             # 如果没有排序配置，根据订阅列表生成默认顺序
-            logger.info("未找到现有排序配置，生成默认排序")
+            logger.info(f"未找到现有{mtype}排序配置，生成默认排序")
             orders = [{"id": subscribe.id} for subscribe in subscribes]
-            logger.info(f"生成的默认排序: {orders}")
+            logger.info(f"生成的默认{mtype}排序: {orders}")
         
         subscribes_with_air_date = []
         subscribes_without_air_date = []
@@ -396,10 +398,10 @@ class SubscribeAutoSort(_PluginBase):
             air_date = self._air_date_cache.get(subscribe.id)
             if air_date:
                 subscribes_with_air_date.append(subscribe)
-                logger.info(f"订阅 {subscribe.name} (ID: {subscribe.id}) 的上映日期: {air_date}")
+                logger.info(f"{mtype}订阅 {subscribe.name} (ID: {subscribe.id}) 的上映日期: {air_date}")
             else:
                 subscribes_without_air_date.append(subscribe)
-                logger.info(f"订阅 {subscribe.name} (ID: {subscribe.id}) 没有上映日期信息")
+                logger.info(f"{mtype}订阅 {subscribe.name} (ID: {subscribe.id}) 没有上映日期信息")
         
         # 根据上映日期对有上映日期的订阅进行排序
         reverse = self._sort_order == "desc"
@@ -409,7 +411,7 @@ class SubscribeAutoSort(_PluginBase):
             reverse=reverse
         )
         order_text = "正序" if self._sort_order == "asc" else "倒序"
-        logger.info(f"按上映日期{order_text}排序后的订阅ID: {[s.id for s in sorted_by_air_date]}")
+        logger.info(f"按上映日期{order_text}排序后的{mtype}订阅ID: {[s.id for s in sorted_by_air_date]}")
         
         # 创建新的排序配置：有上映日期的按指定顺序排序，没有上映日期的保持原顺序
         new_orders = []
@@ -443,13 +445,13 @@ class SubscribeAutoSort(_PluginBase):
             new_orders = new_orders + new_without_order
         else:
             new_orders = new_without_order + new_orders
-        logger.info(f"合并后的新排序配置: {new_orders}")
+        logger.info(f"合并后的新{mtype}排序配置: {new_orders}")
         
         # 保存新的排序配置
-        self.set_user_config(username, new_orders)
-        logger.info(f"排序配置已保存，共 {len(new_orders)} 个订阅")
+        self.set_user_config(username, new_orders, mtype)
+        logger.info(f"{mtype}排序配置已保存，共 {len(new_orders)} 个订阅")
         
-        logger.info(f"订阅自动排序任务执行完成，排序方向: {order_text}")
+        logger.info(f"{mtype}订阅自动排序任务执行完成，排序方向: {order_text}")
         return f"订阅自动排序执行完成，共处理 {len(subscribes)} 个订阅，排序方向: {order_text}"
 
     def subscribe_auto_sort(self) -> str:
@@ -467,11 +469,13 @@ class SubscribeAutoSort(_PluginBase):
             return 
         
         logger.info(f"将处理以下用户的订阅: {self._users}")
+        types = [MediaType.MOVIE.value, MediaType.TV.value]
 
         for username in self._users:
-            logger.info(f"开始处理用户 {username} 的订阅")
-            self.sort_queue_by_user(username)
-            logger.info(f"用户 {username} 的订阅排序任务已完成")
+            for mtype in types:
+                logger.info(f"开始处理用户 {username} 的{mtype}订阅")
+                self.sort_queue_by_user(username,mtype)
+                logger.info(f"用户 {username} 的{mtype}订阅排序任务已完成")
         logger.info("所有用户的订阅排序任务已完成")
 
         return "订阅自动排序任务全部完成"
