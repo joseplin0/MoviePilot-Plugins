@@ -186,11 +186,11 @@ class SubscribeAutoSort(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VCronField',
                                         'props': {
                                             'model': 'cron',
                                             'label': '执行周期',
-                                            'placeholder': '5位cron表达式，留空自动'
+                                            'placeholder': '5位cron表达式，留空表示不启用定时执行',
                                         }
                                     }
                                 ]
@@ -509,14 +509,6 @@ class SubscribeAutoSort(_PluginBase):
                 "id": "subscribe_auto_sort",
                 "name": "订阅自动排序服务",
                 "trigger": CronTrigger.from_crontab(self._cron),
-                "func": self.subscribe_auto_sort,
-                "description": "自动按上映日期对订阅进行排序"
-            }]
-        elif self._enabled:
-            return [{
-                "id": "subscribe_auto_sort",
-                "name": "订阅自动排序服务",
-                "trigger": CronTrigger.from_crontab("0 0 */7 * *"),
                 "func": self.subscribe_auto_sort,
                 "description": "自动按上映日期对订阅进行排序"
             }]
