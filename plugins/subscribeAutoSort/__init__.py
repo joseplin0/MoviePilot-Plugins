@@ -49,8 +49,9 @@ class SubscribeAutoSort(_PluginBase):
     _sort_order = "asc"  # 排序方向：asc-正序，desc-倒序
     _users = []  # 选择的用户列表
     subscribe_oper = None
-    # 上映日期缓存 {subscribe_id: air_date}
-    _air_date_cache = {}
+    # 上映日期缓存键名
+    _AIR_DATE_CACHE_KEY = "air_date_cache"
+    _air_date_cache = {}  # 上映日期缓存
 
     def init_plugin(self, config: dict = None):
         self.tmdb = TmdbApi()
@@ -356,13 +357,11 @@ class SubscribeAutoSort(_PluginBase):
             tv_orders = [{"id": subscribe.id} for subscribe in subscribes]
             logger.info(f"生成的默认排序: {tv_orders}")
         
-        # 使用缓存的上映日期
-        subscribe_air_dates = self._air_date_cache.copy()
         subscribes_with_air_date = []
         subscribes_without_air_date = []
         
         for subscribe in subscribes:
-            air_date = subscribe_air_dates.get(subscribe.id)
+            air_date = self._air_date_cache.get(subscribe.id)
             if air_date:
                 subscribes_with_air_date.append(subscribe)
                 logger.info(f"订阅 {subscribe.name} (ID: {subscribe.id}) 的上映日期: {air_date}")
@@ -374,7 +373,7 @@ class SubscribeAutoSort(_PluginBase):
         reverse = self._sort_order == "desc"
         sorted_by_air_date = sorted(
             subscribes_with_air_date,
-            key=lambda x: subscribe_air_dates.get(x.id),
+            key=lambda x: self._air_date_cache.get(x.id),
             reverse=reverse
         )
         order_text = "正序" if self._sort_order == "asc" else "倒序"
@@ -441,7 +440,7 @@ class SubscribeAutoSort(_PluginBase):
 
     def _prefetch_air_dates(self):
         """
-        预获取所有订阅的上映日期
+        预获取所有订阅的上映日期，并使用插件的 save_data 来缓存
         """
         logger.info("开始预获取订阅上映日期")
         subscribes = self.get_subscribe_all()
@@ -449,19 +448,19 @@ class SubscribeAutoSort(_PluginBase):
             logger.info("没有订阅需要处理")
             return
         
+        # 初始化时从数据库加载缓存的上映日期
+        self._air_date_cache = self.get_data(self._AIR_DATE_CACHE_KEY) or {}
         logger.info(f"已有上映日期: {self._air_date_cache}")
         
         for subscribe in subscribes:
-            try:
+            if (subscribe.id not in self._air_date_cache) or subscribe.lack_episode == subscribe.total_episode:
+                logger.info(f"正在获取订阅 {subscribe.name} 的上映日期")
                 air_date = self._get_air_date_from_api(subscribe)
                 if air_date:
                     self._air_date_cache[subscribe.id] = air_date
-                    logger.info(f"预获取订阅 {subscribe.name} (ID: {subscribe.id}) 的上映日期: {air_date}")
-                else:
-                    logger.info(f"订阅 {subscribe.name} (ID: {subscribe.id}) 没有上映日期信息")
-            except Exception as e:
-                logger.error(f"预获取订阅 {subscribe.name} (ID: {subscribe.id}) 的上映日期失败: {str(e)}")
         
+        # 使用插件的 save_data 方法缓存上映日期
+        self.save_data(self._AIR_DATE_CACHE_KEY, self._air_date_cache)
         logger.info(f"预获取完成，共 {len(self._air_date_cache)} 个订阅的上映日期")
     
     def _get_air_date_from_api(self, subscribe: Subscribe) -> Optional[datetime]:
