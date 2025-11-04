@@ -1,4 +1,4 @@
-"subscribeAutoSort": {
+"SubscribeAutoSort": {
   "name": "订阅自动排序",
   "description": "根据订阅播放日期进行排序",
   "labels": "订阅",
