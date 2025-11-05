@@ -22,7 +22,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "s_order.png"
     # 插件版本
-    plugin_version = "1.1.0"
+    plugin_version = "1.1.1"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -45,6 +45,7 @@ class SubscribeAutoSort(_PluginBase):
     _sort_order = "asc"  # 排序方向：asc-正序，desc-倒序
     _sort_position = "top"  # 排序位置：top-置顶，down-置底
     _users = []  # 选择的用户列表
+    _all_subscribes:List[Subscribe]= []
     subscribe_oper = None
     # 上映日期缓存键名
     _AIR_DATE_CACHE_KEY = "air_date_cache"
@@ -339,9 +340,15 @@ class SubscribeAutoSort(_PluginBase):
         """
         获取所有订阅
         """
-        subscribes = self.subscribe_oper.list()
-        logger.info(f"获取到所有订阅{subscribes}")
-        return subscribes or []
+        self._all_subscribes = self.subscribe_oper.list()
+        logger.info(f"获取到所有订阅：{len(self._all_subscribes)}个")
+        return self._all_subscribes or []
+    
+    def get_subscribe_by_type(self, mtype: str) -> List[Subscribe]:
+        """
+        获取指定类型的订阅
+        """
+        return [subscribe for subscribe in self._all_subscribes if subscribe.type == mtype]
 
     def get_subscribe_by_user(self, username: str, mtype: str) -> List[Subscribe]:
         """
@@ -351,12 +358,12 @@ class SubscribeAutoSort(_PluginBase):
         # 检查用户是否为管理员
         user = self.user_oper.get_by_name(name=username)
         if user and user.is_superuser:
-            # 管理员获取所有用户的订阅
-            subscribes = self.subscribe_oper.list_by_type(mtype=mtype)
+            # 管理员获取所有用户的订阅，并根据 mtype 过滤
+            subscribes = self.get_subscribe_by_type(mtype)
         else:
             # 普通用户只获取自己的订阅
             subscribes = self.subscribe_oper.list_by_username(mtype=mtype, username=username)
-        logger.debug(f"用户{username}{mtype}订阅{subscribes}")
+        logger.debug(f"用户{username}{mtype}订阅：{len(subscribes)}个")
         return subscribes or []
 
 
@@ -493,7 +500,6 @@ class SubscribeAutoSort(_PluginBase):
         
         for subscribe in subscribes:
             if (subscribe.id not in self._air_date_cache) or subscribe.lack_episode == subscribe.total_episode:
-                logger.info(f"正在获取订阅 {subscribe.name} 的上映日期")
                 air_date = self._get_air_date_from_api(subscribe)
                 if air_date:
                     self._air_date_cache[subscribe.id] = air_date
@@ -509,23 +515,16 @@ class SubscribeAutoSort(_PluginBase):
         :return: 上映日期，如果获取失败返回 None
         """
         try:
-            logger.debug(f"从API获取{subscribe.type}订阅 {subscribe.name} 的上映日期")
             if(subscribe.type == MediaType.TV.value):
                 season = self.tmdb.get_tv_season_detail(subscribe.tmdbid, subscribe.season)
-                logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 剧集上映日期: {season.get('air_date') if season else '无'}")
-                if season and season.get('air_date'):
+                logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {season.get('air_date') if season else '无'}")
+                if season:
                     return season.get('air_date')
-                else:
-                    logger.warning(f"{subscribe.type}订阅 {subscribe.name} (TMDB ID:{subscribe.tmdbid}) 无剧集信息")
-                    return None
             elif(subscribe.type == MediaType.MOVIE.value):
                 movie = self.tmdb.get_info(MediaType.MOVIE,subscribe.tmdbid)
                 logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {movie.get('release_date') if movie else '无'}")
-                if movie and movie.get('release_date'):
+                if movie:
                     return movie.get('release_date')
-                else:
-                    logger.warning(f"{subscribe.type}订阅 {subscribe.name} (TMDB ID:{subscribe.tmdbid}) 无上映日期信息")
-                    return None
         except Exception as e:
             logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 剧集信息失败: {str(e)}")
             return None
