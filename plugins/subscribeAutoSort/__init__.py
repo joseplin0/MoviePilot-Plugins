@@ -20,9 +20,9 @@ class SubscribeAutoSort(_PluginBase):
     # 插件描述
     plugin_desc = "自动按上映日期对订阅进行排序"
     # 插件图标
-    plugin_icon = "webhook.png"
+    plugin_icon = "s_order.png"
     # 插件版本
-    plugin_version = "1.1"
+    plugin_version = "1.1.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
