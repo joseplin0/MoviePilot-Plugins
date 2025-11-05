@@ -37,10 +37,6 @@ class SubscribeAutoSort(_PluginBase):
     # 配置键常量
     TV_ORDER_CONFIG_KEY = "SubscribeTvOrder"
     MOVIE_ORDER_CONFIG_KEY = "SubscribeMovieOrder"
-    # 加载顺序
-    plugin_order = 10
-    # 可使用的用户级别
-    auth_level = 1
 
     # 私有属性
     _enabled = False
