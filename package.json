@@ -12,5 +12,18 @@
       "v1.1.0": "新增排序位置选项：支持将带上映日期的订阅排序项置顶或置底显示",
       "v1.0.0": "根据上映日期对用户的订阅进行排序"
     }
+  },
+  "SubscribeCheck": {
+    "name": "订阅检查",
+    "description": "检查订阅下载的文件是否完整",
+    "labels": "订阅",
+    "version": "1.0.0",
+    "icon": "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_check.png",
+    "author": "joseplin0",
+    "level": 1,
+    "v2": true,
+    "history": {
+      "v1.0.0": "检查订阅下载的文件是否完整"
+    }
   }
 }
