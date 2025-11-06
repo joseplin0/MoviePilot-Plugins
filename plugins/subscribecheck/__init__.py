@@ -225,7 +225,7 @@ class SubscribeCheck(_PluginBase):
         """
         获取下载器服务
         """
-        service = self.downloader_helper.get_service(name=downloader, type_filter="qbittorrent")
+        service = self.downloader_helper.get_service(name=downloader, type_filter="transmission")
         if not service:
             logger.error(f"{downloader} 获取下载器实例失败，请检查配置")
         return service
