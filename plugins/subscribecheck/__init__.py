@@ -26,7 +26,7 @@ class SubscribeCheck(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_check.png"
     # 插件版本
-    plugin_version = "1.0.0"
+    plugin_version = "1.0.1"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -150,31 +150,23 @@ class SubscribeCheck(_PluginBase):
 
         subscribe_info = self.__get_subscribe_by_source(source=source)
         if not subscribe_info:
-            logger.warn(f"不是通过订阅下载")
-            return
-
-        if subscribe_info.type != "电视剧":
-            logger.warn(f"订阅类型为 {subscribe_info.type}，非电视剧订阅，跳过处理")
             return
 
         service = self.__get_downloader_service(downloader=downloader)
         if not service:
-            logger.info(f"触发下载事件，但没有获取到下载器 {downloader} 服务，跳过处理")
             return
 
-        if service.type == "qbittorrent":
-            logger.info("当前下载器{service.type}暂不支持")
-            return
         # 检查下载任务的文件选择状态
-        self._check_download_files(torrent_hash, episodes, service)
+        self._check_download_files(torrent_hash, episodes, service.instance)
         return
 
-    def _check_download_files(self, torrent_hash: str, dl_episodes: List[str], service):
+    def _check_download_files(
+        self, torrent_hash: str, dl_episodes: List[str], downloader: Transmission
+    ):
         """
         检查下载文件
         """
-        downloader: Transmission = service.instance
-        torrent_files = self.__torrent_get_files(downloader, torrent_hashe=torrent_hash)
+        torrent_files = self.__torrent_get_files(downloader, torrent_hash)
         if not torrent_files:
             logger.info(f"没有在下载器中获取到 {torrent_hash} 文件列表，跳过处理")
             return
@@ -191,12 +183,16 @@ class SubscribeCheck(_PluginBase):
                     logger.debug(f"不是需要的集数")
                     continue
                 if file.selected == False:
-                    file_ids.push(file.id)
+                    file_ids.append(file.id)
                     logger.info(f"{file_meta.title}未勾选下载")
         if not file_ids:
             logger.info(f"种子文件均已勾选，跳过处理")
             return
-        setState = downloader.set_files(torrent_hash, file_ids)
+        try:
+            setState = downloader.set_files(torrent_hash, file_ids)
+        except Exception as e:
+            logger.error(f"设置种子文件勾选状态失败，错误: {e}")
+            return
         if setState:
             logger.info(f"{torrent_hash}已勾选下载")
         else:
@@ -222,6 +218,10 @@ class SubscribeCheck(_PluginBase):
             logger.error(f"解析 source 数据失败，source: {json_data}, 错误: {e}")
             return None
 
+        if subscribe_dict.type != "电视剧":
+            logger.info(f"订阅类型为 {subscribe_dict.type}，非电视剧订阅，跳过处理")
+            return
+
         return subscribe_dict
 
     def __get_downloader_service(self, downloader: str) -> Optional[ServiceInfo]:
@@ -233,11 +233,14 @@ class SubscribeCheck(_PluginBase):
             logger.error(f"{downloader} 获取下载器实例失败，请检查配置")
             return None
 
+        if service.type == "qbittorrent":
+            logger.info("当前下载器{service.type}暂不支持")
+            return None
+
         return service
 
-    @staticmethod
     def __torrent_get_files(
-        downloader: Optional[Transmission], torrent_hashe: Optional[str] = None
+        downloader: Transmission, torrent_hash: str
     ) -> Optional[List[File]]:
         """
         获取下载器中的种子信息
@@ -249,9 +252,13 @@ class SubscribeCheck(_PluginBase):
             logger.warning(f"获取下载器实例失败，请稍后重试")
             return None
 
-        torrent_files = downloader.get_files(tid=torrent_hashe)
+        try:
+            torrent_files = downloader.get_files(tid=torrent_hash)
+        except Exception as e:
+            logger.error(f"获取种子文件列表失败，错误: {e}")
+            return None
         if not torrent_files:
-            logger.warning(f"获取文件列表失败，请稍后重试")
+            logger.warning(f"没有获取到种子文件列表，请稍后重试")
             return None
 
         return torrent_files
