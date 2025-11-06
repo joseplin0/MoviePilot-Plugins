@@ -24,13 +24,13 @@ class SubscribeCheck(_PluginBase):
     # 插件描述
     plugin_desc = "监听下载添加事件，检查订阅下载的文件是否完整"
     # 插件图标
-    plugin_icon = "s_check.png"
+    plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_check.png"
     # 插件版本
     plugin_version = "1.0.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
-    author_url = "https://github.com/joseplin0/MoviePilot-plugins"
+    author_url = "https://github.com/joseplin0"
     # 插件配置项ID前缀
     plugin_config_prefix = "subscribecheck_"
     # 加载顺序

@@ -20,7 +20,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件描述
     plugin_desc = "自动按上映日期对订阅进行排序"
     # 插件图标
-    plugin_icon = "s_order.png"
+    plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
     plugin_version = "1.1.1"
     # 插件作者
@@ -60,7 +60,7 @@ class SubscribeAutoSort(_PluginBase):
         # 初始化插件
         if not config:
             return
-        
+
         self._enabled = config.get("enabled")
         self._onlyonce = config.get("only_once")
         self._cron = config.get("cron")
@@ -70,7 +70,7 @@ class SubscribeAutoSort(_PluginBase):
 
         if self._enabled:
             logger.info(f"订阅自动排序插件已启用")
-            
+
             if self._onlyonce:
                 logger.info(f"订阅自动排序服务，立即运行一次")
                 self._scheduler = BackgroundScheduler(timezone=settings.TZ)
@@ -134,7 +134,7 @@ class SubscribeAutoSort(_PluginBase):
         """
         all_users = self.user_oper.list()
         user_options = [{"title": user.name, "value": user.name} for user in all_users]
-        
+
         return [
             {
                 'component': 'VForm',
@@ -316,7 +316,6 @@ class SubscribeAutoSort(_PluginBase):
     def get_page(self) -> List[dict]:
         pass
 
-
     def get_user_config(self, username: str, mtype: MediaType) -> List[Dict[str, str]]:
         """
         获取订阅排序配置
@@ -343,7 +342,7 @@ class SubscribeAutoSort(_PluginBase):
         self._all_subscribes = self.subscribe_oper.list()
         logger.info(f"获取到所有订阅：{len(self._all_subscribes)}个")
         return self._all_subscribes or []
-    
+
     def get_subscribe_by_type(self, mtype: str) -> List[Subscribe]:
         """
         获取指定类型的订阅
@@ -366,7 +365,6 @@ class SubscribeAutoSort(_PluginBase):
         logger.debug(f"用户{username}{mtype}订阅：{len(subscribes)}个")
         return subscribes or []
 
-
     def sort_queue_by_user(self, username: str,mtype: str = MediaType.TV.value) -> str:
         """
         根据用户的排序配置对订阅列表进行排序
@@ -387,17 +385,17 @@ class SubscribeAutoSort(_PluginBase):
             # 如果获取配置失败，记录错误并返回
             logger.error(f"用户{username}{mtype}订阅获取排序配置失败，任务终止")
             return "获取订阅排序配置失败，任务终止"
-        
+
         logger.debug(f"用户{username}{mtype}订阅当前排序配置: {orders}")
         if not orders:
             # 如果没有排序配置，根据订阅列表生成默认顺序
             logger.info(f"用户{username}{mtype}订阅未找到现有排序配置，生成默认排序")
             orders = [{"id": subscribe.id} for subscribe in subscribes]
             logger.debug(f"用户{username}{mtype}订阅生成默认排序配置")
-        
+
         subscribes_with_air_date = []
         subscribes_without_air_date = []
-        
+
         for subscribe in subscribes:
             air_date = self._air_date_cache.get(subscribe.id)
             if air_date:
@@ -406,7 +404,7 @@ class SubscribeAutoSort(_PluginBase):
             else:
                 subscribes_without_air_date.append(subscribe)
                 logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 不需要排序")
-        
+
         # 根据上映日期对有上映日期的订阅进行排序
         reverse = self._sort_order == "desc"
         sorted_by_air_date = sorted(
@@ -416,17 +414,17 @@ class SubscribeAutoSort(_PluginBase):
         )
         order_text = "正序" if self._sort_order == "asc" else "倒序"
         logger.debug(f"用户{username}{mtype}订阅 按上映日期{order_text}排序后的: {[s.id for s in sorted_by_air_date]}")
-        
+
         # 创建新的排序配置：有上映日期的按指定顺序排序，没有上映日期的保持原顺序
         new_orders = []
         # 没有上映日期的订阅保持原顺序
         new_without_order = []
-        
+
         # 先添加按上映日期排序的订阅
         for subscribe in sorted_by_air_date:
             if {"id": subscribe.id} not in new_orders:
                 new_orders.append({"id": subscribe.id})
-        
+
         # 再添加没有上映日期的订阅，保持它们在原排序中的顺序
         # 创建一个映射，用于快速查找订阅ID在原排序中的位置
         original_order_map = {}
@@ -434,27 +432,27 @@ class SubscribeAutoSort(_PluginBase):
             order_id = order.get("id")
             if order_id:
                 original_order_map[order_id] = idx
-        
+
         # 对没有上映日期的订阅按原排序顺序进行排序
         sorted_without_air_date = sorted(
             subscribes_without_air_date,
             key=lambda x: original_order_map.get(x.id, float('inf')))
-        
+
         # 添加没有上映日期的订阅
         for subscribe in sorted_without_air_date:
             if {"id": subscribe.id} not in new_orders:
                 new_without_order.append({"id": subscribe.id})
-        
+
         if self._sort_position == "top":
             new_orders = new_orders + new_without_order
         else:
             new_orders = new_without_order + new_orders
         logger.debug(f"用户{username}{mtype}订阅合并后的新排序配置: {new_orders}")
-        
+
         # 保存新的排序配置
         self.set_user_config(username, new_orders, mtype)
         logger.debug(f"用户{username}{mtype}订阅排序配置已保存，共 {len(new_orders)} 个订阅")
-        
+
         logger.info(f"用户{username}{mtype}订阅自动排序任务执行完成，排序方向: {order_text}")
         return f"订阅自动排序执行完成，共处理 {len(subscribes)} 个订阅，排序方向: {order_text}"
 
@@ -466,12 +464,12 @@ class SubscribeAutoSort(_PluginBase):
         self._prefetch_air_dates()
 
         logger.info("开始执行订阅自动排序任务")
-        
+
         # 确定要处理的用户列表
         if not self._users:
             logger.warning("未配置用户，任务终止")
             return
-        
+
         logger.info(f"将处理以下用户的订阅: {self._users}")
         types = [MediaType.MOVIE.value, MediaType.TV.value]
 
@@ -493,21 +491,21 @@ class SubscribeAutoSort(_PluginBase):
         if not subscribes:
             logger.info("没有订阅需要处理")
             return
-        
+
         # 加载缓存时将键转换为整数
         cache_data = self.get_data(self._AIR_DATE_CACHE_KEY) or {}
         self._air_date_cache = {int(k): v for k, v in cache_data.items()}
-        
+
         for subscribe in subscribes:
             if (subscribe.id not in self._air_date_cache) or subscribe.lack_episode == subscribe.total_episode:
                 air_date = self._get_air_date_from_api(subscribe)
                 if air_date:
                     self._air_date_cache[subscribe.id] = air_date
-        
+
         # 使用插件的 save_data 方法缓存上映日期
         self.save_data(self._AIR_DATE_CACHE_KEY, self._air_date_cache)
         logger.info(f"预获取完成，共 {len(self._air_date_cache)} 个订阅的上映日期")
-    
+
     def _get_air_date_from_api(self, subscribe: Subscribe) -> Optional[datetime]:
         """
         从API获取订阅的上映日期
@@ -528,7 +526,6 @@ class SubscribeAutoSort(_PluginBase):
         except Exception as e:
             logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 剧集信息失败: {str(e)}")
             return None
-    
 
     def get_service(self) -> List[Dict[str, Any]]:
         """
@@ -550,7 +547,6 @@ class SubscribeAutoSort(_PluginBase):
                 "description": "自动按上映日期对订阅进行排序"
             }]
         return []
-
 
     def stop_service(self):
         """
