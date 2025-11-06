@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Any, List, Dict, Tuple, Optional
 from app.plugins import _PluginBase
 from transmission_rpc import File
@@ -52,18 +53,18 @@ class SubscribeCheck(_PluginBase):
         self.downloader_helper = DownloaderHelper()
         if not config:
             return
-            
+
         self._enabled = config.get("enabled")
         self._onlyonce = config.get("only_once")
         self._cron = config.get("cron")
 
         if self._enabled:
             logger.info("订阅检查插件已启用")
-            
+
             if self._onlyonce:
                 logger.info("订阅检查服务，立即运行一次")
                 # 这里可以调用一次检查逻辑
-                
+
             logger.info("订阅检查插件初始化完成")
 
     def get_state(self) -> bool:
@@ -71,7 +72,6 @@ class SubscribeCheck(_PluginBase):
         获取插件状态
         """
         return self._enabled
-    
 
     def get_api(self) -> List[Dict[str, Any]]:
         """
@@ -85,35 +85,31 @@ class SubscribeCheck(_PluginBase):
         """
         return [
             {
-                'component': 'VForm',
-                'content': [
+                "component": "VForm",
+                "content": [
                     {
-                        'component': 'VRow',
-                        'content': [
+                        "component": "VRow",
+                        "content": [
                             {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                "content":[
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
                                     {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
-                                        }
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "enabled",
+                                            "label": "启用插件",
+                                        },
                                     }
-                                ]
+                                ],
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
         ], {
             "enabled": False,
         }
-
 
     def get_page(self) -> List[dict]:
         pass
@@ -134,11 +130,11 @@ class SubscribeCheck(_PluginBase):
         """
         if not self._enabled:
             return
-            
+
         event_data = event.event_data
         if not event_data:
             return
-        
+
         torrent_hash = event_data.get("hash")
         context: Context = event_data.get("context")
         downloader = event_data.get("downloader")
@@ -146,7 +142,7 @@ class SubscribeCheck(_PluginBase):
         username = event_data.get("username")
         source = event_data.get("source")
 
-        logger.debug(f"接收到下载添加事件，来自用户: {username}, 数据: {event.event_data}")
+        logger.debug(f"接收到下载事件，来自用户: {username}, 数据: {event.event_data}")
 
         if not torrent_hash or not context or not context.torrent_info:
             logger.info("没有获取到有效的种子任务信息，跳过处理")
@@ -154,22 +150,26 @@ class SubscribeCheck(_PluginBase):
 
         subscribe_info = self.__get_subscribe_by_source(source=source)
         if not subscribe_info:
-            logger.debug(f"不是通过订阅下载")
+            logger.warn(f"不是通过订阅下载")
+            return
+
+        if subscribe_info.type != "电视剧":
+            logger.warn(f"订阅类型为 {subscribe_info.type}，非电视剧订阅，跳过处理")
             return
 
         service = self.__get_downloader_service(downloader=downloader)
         if not service:
-            logger.info(f"触发添加下载事件，但没有获取到下载器 {downloader} 服务，跳过处理")
+            logger.info(f"触发下载事件，但没有获取到下载器 {downloader} 服务，跳过处理")
             return
-        
-        if service.type == 'qbittorrent':
+
+        if service.type == "qbittorrent":
             logger.info("当前下载器{service.type}暂不支持")
             return
         # 检查下载任务的文件选择状态
-        self._check_download_files(torrent_hash,episodes,service)
+        self._check_download_files(torrent_hash, episodes, service)
         return
 
-    def _check_download_files(self,torrent_hash:str,dl_episodes:List[str],service):
+    def _check_download_files(self, torrent_hash: str, dl_episodes: List[str], service):
         """
         检查下载文件
         """
@@ -178,18 +178,25 @@ class SubscribeCheck(_PluginBase):
         if not torrent_files:
             logger.info(f"没有在下载器中获取到 {torrent_hash} 文件列表，跳过处理")
             return
+        logger.info(f"文件{torrent_hash}获取到{len(torrent_files)}个文件")
         file_ids = []
-        for torrent_file in torrent_files:
-            file_meta = MetaInfo(torrent_file.name)
-            # 识别媒体信息获取集数
-            mediainfo = self.chain.recognize_media(meta=file_meta)
-            if mediainfo and mediainfo.begin_episode:
-                episode_number = mediainfo.begin_episode
-                logger.info(f"识别到文件：{torrent_file.name}，集数：{episode_number}")
-                if episode_number in dl_episodes and torrent_file.selected == False:
-                    file_ids.push(torrent_file.id)
-                    logger.info(f"{torrent_file.name}未勾选下载")
-        setState = downloader.set_files(torrent_hash,file_ids)
+        for file in torrent_files:
+            # 识别文件集
+            file_meta = MetaInfo(Path(file).stem)
+            logger.debug(f"当前文件：{file},{file_meta}")
+            if file_meta.begin_episode:
+                episode_number = file_meta.begin_episode
+                logger.debug(f"文件：{file.name}，集数：{episode_number}")
+                if episode_number not in dl_episodes:
+                    logger.debug(f"不是需要的集数")
+                    continue
+                if file.selected == False:
+                    file_ids.push(file.id)
+                    logger.info(f"{file_meta.title}未勾选下载")
+        if not file_ids:
+            logger.info(f"种子文件均已勾选，跳过处理")
+            return
+        setState = downloader.set_files(torrent_hash, file_ids)
         if setState:
             logger.info(f"{torrent_hash}已勾选下载")
         else:
@@ -214,9 +221,9 @@ class SubscribeCheck(_PluginBase):
         except Exception as e:
             logger.error(f"解析 source 数据失败，source: {json_data}, 错误: {e}")
             return None
-        
+
         return subscribe_dict
-    
+
     def __get_downloader_service(self, downloader: str) -> Optional[ServiceInfo]:
         """
         获取下载器服务
@@ -227,9 +234,11 @@ class SubscribeCheck(_PluginBase):
             return None
 
         return service
+
     @staticmethod
-    def __torrent_get_files(downloader: Optional[Transmission],
-                       torrent_hashe: Optional[str] = None) -> Optional[List[File]]:
+    def __torrent_get_files(
+        downloader: Optional[Transmission], torrent_hashe: Optional[str] = None
+    ) -> Optional[List[File]]:
         """
         获取下载器中的种子信息
         :param downloader: 下载器实例
@@ -246,6 +255,7 @@ class SubscribeCheck(_PluginBase):
             return None
 
         return torrent_files
+
     def stop_service(self):
         """
         停止插件服务
