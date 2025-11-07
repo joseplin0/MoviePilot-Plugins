@@ -10,7 +10,7 @@ from app.log import logger
 from app.core.event import eventmanager, Event
 
 
-class TrimeMediaTool(_PluginBase):
+class TrimMediaTool(_PluginBase):
     """
     飞牛影视助手
     刷新具体媒体文件
@@ -20,7 +20,7 @@ class TrimeMediaTool(_PluginBase):
     # 插件描述
     plugin_desc = "自动触发飞牛扫描文件夹，支持未入库的媒体文件"
     # 插件图标
-    plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimemedia.png"
+    plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png"
     # 插件版本
     plugin_version = "0.9.0"
     # 插件作者
@@ -28,7 +28,7 @@ class TrimeMediaTool(_PluginBase):
     # 作者主页
     author_url = "https://github.com/joseplin0"
     # 插件配置项ID前缀
-    plugin_config_prefix = "trimemediatool_"
+    plugin_config_prefix = "trimmediatool_"
     # 加载顺序
     plugin_order = 20
     # 可使用的用户级别
