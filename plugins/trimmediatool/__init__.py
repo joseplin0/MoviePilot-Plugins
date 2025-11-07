@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, List, Dict, Tuple, Optional
-from app.utils.debounce import debounce
+from threading import Timer
 from app.helper.mediaserver import MediaServerHelper
 from app.modules.trimemedia.trimemedia import TrimeMedia
 from app.plugins import _PluginBase
@@ -22,7 +22,7 @@ class TrimMediaTool(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png"
     # 插件版本
-    plugin_version = "1.0.0"
+    plugin_version = "1.0.1"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -68,12 +68,9 @@ class TrimMediaTool(_PluginBase):
 
         if self._enabled:
             logger.info("飞牛影视插件已启用")
-            # 初始化节流扫描方法
-            self._throttled_scan = debounce(
-                interval=self._delay_seconds,
-                leading=False,
-                enable_logging=True,
-                source="TrimMediaTool"
+            # 初始化节流扫描方法 - 使用简化的防抖实现
+            self._throttled_scan = self._create_debounce(
+                interval=self._delay_seconds
             )(self._process_scan_queue)
 
             if not self._media_map_dirs:
@@ -335,3 +332,28 @@ class TrimMediaTool(_PluginBase):
         停止插件服务
         """
         pass
+
+    def _create_debounce(self, interval: float):
+        """
+        创建一个简化的防抖装饰器
+        :param interval: 防抖间隔，单位秒
+        """
+        def decorator(func):
+            timer = None
+
+            def wrapper(*args, **kwargs):
+                nonlocal timer
+                
+                # 取消之前的定时器
+                if timer:
+                    timer.cancel()
+                
+                # 设置新的定时器
+                def delayed_execution():
+                    func(*args, **kwargs)
+                
+                timer = Timer(interval, delayed_execution)
+                timer.start()
+
+            return wrapper
+        return decorator
