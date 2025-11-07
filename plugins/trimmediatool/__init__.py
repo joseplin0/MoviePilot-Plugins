@@ -48,6 +48,8 @@ class TrimMediaTool(_PluginBase):
     _throttled_scan = None
     # 映射目录字典
     _map_dirs: dict[str, str] = {}
+    # 缓存的服务信息
+    _cached_service_info: Optional[ServiceInfo] = None
 
     def init_plugin(self, config: dict = None):
         """
@@ -55,6 +57,9 @@ class TrimMediaTool(_PluginBase):
         :param config: 配置信息
         """
         self.server_helper = MediaServerHelper()
+        
+        # 清除缓存，因为配置可能发生了变化
+        self._cached_service_info = None
 
         if not config:
             return
@@ -89,8 +94,12 @@ class TrimMediaTool(_PluginBase):
     @property
     def service_info(self) -> Optional[ServiceInfo]:
         """
-        服务信息
+        服务信息（带缓存）
         """
+        # 如果已有缓存，直接返回
+        if self._cached_service_info is not None:
+            return self._cached_service_info
+
         # 获取媒体服务器配置
         media_config = self.get_media_config()
         logger.debug(f"获取飞牛影视配置: {media_config}")
@@ -107,6 +116,8 @@ class TrimMediaTool(_PluginBase):
             logger.warning(f"媒体服务器 {service.name} 未连接，请检查配置")
             return None
 
+        # 缓存服务信息
+        self._cached_service_info = service
         return service
     def get_state(self) -> bool:
         """
@@ -197,6 +208,7 @@ class TrimMediaTool(_PluginBase):
         """
         监听整理入库，刷新飞牛媒体库
         """
+        logger.info("收到整理入库完成事件")
         if not self._enabled:
             return
         
@@ -250,18 +262,16 @@ class TrimMediaTool(_PluginBase):
         for paths in self._scan_queue.values():
             if media_path in paths:
                 logger.debug(f"路径 {media_path} 已在扫描队列中，跳过重复添加")
-            return
-        
-        # 获取媒体服务器实例
-        if not self.service_info:
-            logger.warning("无法获取媒体服务器实例，跳过添加到扫描队列")
-            return
+                # 即使路径已在队列中，也要触发扫描以确保队列被处理
+                self._throttled_scan()
+                return
         
         # 获取媒体库信息
         trimemedia: TrimeMedia = self.service_info.instance
         library = trimemedia._TrimeMedia__match_library_by_path(Path(media_path))
         if not library:
             logger.warning(f"无法找到路径 {media_path} 对应的媒体库，跳过添加到扫描队列")
+            self._throttled_scan()
             return
         
         # 按媒体库分组管理扫描队列
@@ -284,7 +294,7 @@ class TrimMediaTool(_PluginBase):
             logger.debug("扫描队列为空，跳过处理")
             return
         
-        logger.info("开始处理扫描队列...")
+        logger.info("添加扫描队列...")
         
         # 复制当前队列并清空
         current_queue = self._scan_queue.copy()
