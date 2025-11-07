@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, List, Dict, Tuple, Optional
-
+from app.utils.debounce import debounce
 from app.helper.mediaserver import MediaServerHelper
 from app.modules.trimemedia.trimemedia import TrimeMedia
 from app.plugins import _PluginBase
@@ -22,7 +22,7 @@ class TrimMediaTool(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png"
     # 插件版本
-    plugin_version = "0.9.1"
+    plugin_version = "1.0.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -40,15 +40,20 @@ class TrimMediaTool(_PluginBase):
     _only_once = False
     # 媒体库目录映射
     _media_map_dirs = ""
-
-    _map_dirs = {}
+    # 延迟扫描时间（秒）
+    _delay_seconds = 10
+    # 待扫描路径队列
+    _scan_queue: dict[str, list[str]] = {}
+    # 节流扫描方法
+    _throttled_scan = None
+    # 映射目录字典
+    _map_dirs: dict[str, str] = {}
 
     def init_plugin(self, config: dict = None):
         """
         初始化插件
         :param config: 配置信息
         """
-
         self.server_helper = MediaServerHelper()
 
         if not config:
@@ -57,8 +62,20 @@ class TrimMediaTool(_PluginBase):
         self._enabled = config.get("enabled")
         self._only_once = config.get("only_once")
         self._media_map_dirs = config.get("media_map_dirs") or ""
+        self._delay_seconds = config.get("delay_seconds") or 10
+        # 初始化扫描队列
+        self._scan_queue = {}
+
         if self._enabled:
             logger.info("飞牛影视插件已启用")
+            # 初始化节流扫描方法
+            self._throttled_scan = debounce(
+                interval=self._delay_seconds,
+                leading=False,
+                enable_logging=True,
+                source="TrimMediaTool"
+            )(self._process_scan_queue)
+
             if not self._media_map_dirs:
                 return
             # 查找映射目录
@@ -79,6 +96,7 @@ class TrimMediaTool(_PluginBase):
         """
         # 获取媒体服务器配置
         media_config = self.get_media_config()
+        logger.debug(f"获取飞牛影视配置: {media_config}")
         if not media_config or not media_config.name:
             logger.warning("无法获取飞牛媒体服务器配置，请检查配置")
             return None
@@ -203,31 +221,86 @@ class TrimMediaTool(_PluginBase):
         # /downloads/link/anime/诛仙 (2022)/
         mp_target_path = transferinfo.target_diritem.path
         fn_media_path = self.get_mp_path(mp_target_path)
-        self.scan_media(fn_media_path)
+        
+        # 将路径添加到扫描队列
+        self._add_to_scan_queue(fn_media_path)
 
-    def scan_media(self, media_path: str) -> bool:
+
+    def _scan_media(self, library_guid: str, media_paths: List[str]) -> bool:
         """
         扫描媒体文件
         :param media_path: 媒体路径
         :return: 是否成功
         """
-        if not self.service_info:
-            return False
+        logger.info(f"开始刷新飞牛媒体库，媒体路径：{library_guid}")
+        
+        # 获取媒体库信息
         trimemedia: TrimeMedia = self.service_info.instance
         trimemedia.api.task_running()
-        data = {"dir_list":[media_path]}
-        # 根据媒体路径获取对应的媒体库
-        library = trimemedia._TrimeMedia__match_library_by_path(Path(media_path))
-        if not library:
-            logger.warning(f"无法找到路径 {media_path} 对应的媒体库，跳过刷新")
-            return False
-        
-        logger.info(f"开始刷新飞牛媒体库，媒体路径：{media_path}")
-        if (res := trimemedia.api.request(f"/mdb/scan/{library.guid}", method="post", data=data)) and res.success:
+        data = { "dir_list": media_paths }
+        if (res := trimemedia.api.request(f"/mdb/scan/{library_guid}", method="post", data=data)) and res.success:
             logger.debug(f"已发送扫描请求{res}")
             if res.data:
                 return True
         return False
+    
+    def _add_to_scan_queue(self, media_path: str):
+        """
+        将媒体路径添加到扫描队列（带节流）
+        :param media_path: 媒体路径
+        """
+        # 先检查路径是否已在任何媒体库的扫描队列中
+        for paths in self._scan_queue.values():
+            if media_path in paths:
+                logger.debug(f"路径 {media_path} 已在扫描队列中，跳过重复添加")
+            return
+        
+        # 获取媒体服务器实例
+        if not self.service_info:
+            logger.warning("无法获取媒体服务器实例，跳过添加到扫描队列")
+            return
+        
+        # 获取媒体库信息
+        trimemedia: TrimeMedia = self.service_info.instance
+        library = trimemedia._TrimeMedia__match_library_by_path(Path(media_path))
+        if not library:
+            logger.warning(f"无法找到路径 {media_path} 对应的媒体库，跳过添加到扫描队列")
+            return
+        
+        # 按媒体库分组管理扫描队列
+        if library.guid not in self._scan_queue:
+            self._scan_queue[library.guid] = []
+        
+        # 将路径添加到队列
+        self._scan_queue[library.guid].append(media_path)
+        logger.debug(f"已将路径 {media_path} 添加到扫描队列，媒体库：{library.name}")
+        
+        # 触发节流扫描
+        self._throttled_scan()
+        return
+
+    def _process_scan_queue(self):
+        """
+        处理扫描队列（节流执行）
+        """
+        if not self._scan_queue:
+            logger.debug("扫描队列为空，跳过处理")
+            return
+        
+        logger.info("开始处理扫描队列...")
+        
+        # 复制当前队列并清空
+        current_queue = self._scan_queue.copy()
+        self._scan_queue.clear()
+        
+        # 按媒体库分组扫描
+        for library_guid, paths in current_queue.items():
+            if not paths:
+                continue
+            try:
+                self._scan_media(library_guid, paths)
+            except Exception as e:
+                logger.error(f"扫描路径 {library_guid} 时发生错误：{str(e)}")
 
     def get_mp_path(self, path: str) -> str:
         """

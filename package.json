@@ -32,12 +32,13 @@
     "name": "飞牛影视助手",
     "description": "自动触发飞牛扫描文件夹，支持未入库的媒体文件",
     "labels": "媒体库",
-    "version": "0.9.1",
+    "version": "1.0.0",
     "icon": "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png",
     "author": "joseplin0",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.0.0": "合并相同媒体库剧集请求，增加延迟功能",
       "v0.9.0": "自动触发飞牛扫描文件夹，支持未入库的媒体文件"
     }
   }
