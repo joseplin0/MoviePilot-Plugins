@@ -217,7 +217,7 @@ class TrimMediaTool(_PluginBase):
         if not self._enabled:
             return
         
-        logger.debug(f"收到{event.event_type}事件,{event.event_data}")
+        logger.debug(f"源文件删除,{event.event_data}")
         
         # 获取事件数据
         event_data = event.event_data
@@ -226,8 +226,7 @@ class TrimMediaTool(_PluginBase):
             
         # 获取下载哈希
         hash = event_data.get("hash")
-        src = event_data.get("src")
-        if not src or not hash:
+        if not hash:
             return
         
         # 先检查是否已在删除映射中
@@ -237,14 +236,14 @@ class TrimMediaTool(_PluginBase):
             return
         
         # 查询转移历史记录
-        transfer_history = self.transfer_history_oper.get_by_src(src)
+        transfer_history = self.transfer_history_oper.list_by_hash(hash)
         if not transfer_history:
-            logger.debug(f"未找到下载源 {src} 对应的转移历史记录")
+            logger.debug(f"未找到hash {hash} 对应的转移历史记录")
             return
         
         # 重命名格式
-        rename_format = settings.RENAME_FORMAT(transfer_history.type)
-        dest_path = Path(transfer_history.dest)
+        rename_format = settings.RENAME_FORMAT(transfer_history[0].type)
+        dest_path = Path(transfer_history[0].dest)
         new_path = DirectoryHelper.get_media_root_path(rename_format, rename_path=dest_path)
         fn_media_path = self.get_mp_path(new_path)
         self._del_map[hash] = fn_media_path
