@@ -203,6 +203,17 @@ class TrimMediaTool(_PluginBase):
         """
         pass
 
+    @eventmanager.register([EventType.DownloadDeleted,EventType.DownloadFileDeleted,EventType.HistoryDeleted])
+    def on_event(self, event: Event):
+        """
+        监听删除事件
+        """
+        if not self._enabled:
+            return
+        
+        logger.debug(f"收到{event.event_type}事件,{event}")
+        return
+
     @eventmanager.register(EventType.TransferComplete)
     def refresh(self, event: Event):
         """
