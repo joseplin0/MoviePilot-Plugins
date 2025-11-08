@@ -5,6 +5,8 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.schemas import MediaType
+from app.schemas.types import EventType
+from app.core.event import eventmanager, Event
 from app.core.config import settings
 from app.log import logger
 from app.modules.themoviedb.tmdbapi import TmdbApi
@@ -22,7 +24,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.1.1"
+    plugin_version = "1.2.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -40,6 +42,9 @@ class SubscribeAutoSort(_PluginBase):
 
     # 私有属性
     _enabled = False
+
+    # 是否监听订阅
+    _is_monitor = False
     _onlyonce = False
     _cron = None
     _sort_order = "asc"  # 排序方向：asc-正序，desc-倒序
@@ -62,6 +67,7 @@ class SubscribeAutoSort(_PluginBase):
             return
 
         self._enabled = config.get("enabled")
+        self._is_monitor = config.get("is_monitor")
         self._onlyonce = config.get("only_once")
         self._cron = config.get("cron")
         self._sort_order = config.get("sort_order")
@@ -94,6 +100,30 @@ class SubscribeAutoSort(_PluginBase):
 
     def get_state(self) -> bool:
         return self._enabled
+
+
+    @eventmanager.register(EventType.SubscribeAdded, priority=9999)
+    def on_subscribe_add(self, event: Event):
+        """
+        监听订阅添加事件，触发排序
+        """
+        if not self._enabled:
+            return
+            
+        if not event or not event.event_data:
+                return
+
+        if not self._is_monitor:
+            logger.info("插件未启用监听订阅功能，跳过处理")
+            return
+        mediainfo_dict: Dict = event.event_data.get("mediainfo")
+        media_type = mediainfo_dict.get("type")
+        logger.info(f"收到{media_type}{mediainfo_dict.get('title')}订阅添加事件")
+        if media_type:
+            self.subscribe_auto_sort([media_type])
+        else:
+            self.subscribe_auto_sort()
+        return
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -145,7 +175,7 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
+                                    'cols': 8,
                                     'md': 6
                                 },
                                 'content': [
@@ -161,7 +191,7 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
+                                    'cols': 8,
                                     'md': 6
                                 },
                                 'content': [
@@ -170,6 +200,22 @@ class SubscribeAutoSort(_PluginBase):
                                         'props': {
                                             'model': 'only_once',
                                             'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 8,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'is_monitor',
+                                            'label': '监听订阅',
                                         }
                                     }
                                 ]
@@ -235,11 +281,11 @@ class SubscribeAutoSort(_PluginBase):
                                             'label': '排序方向',
                                             'items': [
                                                 {
-                                                    'title': '正序（由前到后）',
+                                                    'title': '顺序',
                                                     'value': 'asc'
                                                 },
                                                 {
-                                                    'title': '倒序（由后到前）',
+                                                    'title': '逆序',
                                                     'value': 'desc'
                                                 }
                                             ]
@@ -306,6 +352,7 @@ class SubscribeAutoSort(_PluginBase):
             }
         ], {
             "enabled": False,
+            "is_monitor": False,
             "only_once": False,
             "sort_order": "asc",
             "sort_position": "top",
@@ -456,7 +503,7 @@ class SubscribeAutoSort(_PluginBase):
         logger.info(f"用户{username}{mtype}订阅自动排序任务执行完成，排序方向: {order_text}")
         return f"订阅自动排序执行完成，共处理 {len(subscribes)} 个订阅，排序方向: {order_text}"
 
-    def subscribe_auto_sort(self) -> str:
+    def subscribe_auto_sort(self,types: List[str] = [MediaType.MOVIE.value, MediaType.TV.value]) -> str:
         """
         订阅自动排序
         """
@@ -471,7 +518,6 @@ class SubscribeAutoSort(_PluginBase):
             return
 
         logger.info(f"将处理以下用户的订阅: {self._users}")
-        types = [MediaType.MOVIE.value, MediaType.TV.value]
 
         for username in self._users:
             for mtype in types:
