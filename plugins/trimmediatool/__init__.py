@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, List, Dict, Tuple, Optional
 from threading import Timer
+from app.helper.directory import DirectoryHelper
 from app.helper.mediaserver import MediaServerHelper
 from app.modules.trimemedia.trimemedia import TrimeMedia
 from app.plugins import _PluginBase
@@ -8,6 +9,8 @@ from app.schemas import ServiceInfo,TransferInfo,MediaServerConf
 from app.schemas.types import EventType
 from app.log import logger
 from app.core.event import eventmanager, Event
+from app.core.config import settings
+from app.db.transferhistory_oper import TransferHistoryOper
 
 
 class TrimMediaTool(_PluginBase):
@@ -18,11 +21,11 @@ class TrimMediaTool(_PluginBase):
     # 插件名称
     plugin_name = "飞牛影视助手"
     # 插件描述
-    plugin_desc = "自动触发飞牛扫描文件夹，支持未入库的媒体文件"
+    plugin_desc = "入库或删除源文件自动触发飞牛扫描，支持未入库的媒体文件"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png"
     # 插件版本
-    plugin_version = "1.0.1"
+    plugin_version = "1.1.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -35,6 +38,7 @@ class TrimMediaTool(_PluginBase):
     auth_level = 1
 
     server_helper = None
+    transfer_history_oper = None
 
     _enabled = False
     _only_once = False
@@ -46,6 +50,7 @@ class TrimMediaTool(_PluginBase):
     _scan_queue: dict[str, list[str]] = {}
     # 节流扫描方法
     _throttled_scan = None
+    _del_map = {}
     # 映射目录字典
     _map_dirs: dict[str, str] = {}
     # 缓存的服务信息
@@ -57,6 +62,7 @@ class TrimMediaTool(_PluginBase):
         :param config: 配置信息
         """
         self.server_helper = MediaServerHelper()
+        self.transfer_history_oper = TransferHistoryOper()
         
         # 清除缓存，因为配置可能发生了变化
         self._cached_service_info = None
@@ -203,7 +209,7 @@ class TrimMediaTool(_PluginBase):
         """
         pass
 
-    @eventmanager.register([EventType.DownloadDeleted,EventType.DownloadFileDeleted,EventType.HistoryDeleted])
+    @eventmanager.register(EventType.DownloadFileDeleted)
     def on_event(self, event: Event):
         """
         监听删除事件
@@ -212,6 +218,38 @@ class TrimMediaTool(_PluginBase):
             return
         
         logger.debug(f"收到{event.event_type}事件,{event.event_data}")
+        
+        # 获取事件数据
+        event_data = event.event_data
+        if not event_data:
+            return
+            
+        # 获取下载哈希
+        hash = event_data.get("hash")
+        src = event_data.get("src")
+        if not src or not hash:
+            return
+        
+        # 先检查是否已在删除映射中
+        if hash in self._del_map:
+            # 将路径添加到扫描队列
+            self._add_to_scan_queue(self._del_map[hash])
+            return
+        
+        # 查询转移历史记录
+        transfer_history = self.transfer_history_oper.get_by_src(src)
+        if not transfer_history:
+            logger.debug(f"未找到下载源 {src} 对应的转移历史记录")
+            return
+        
+        # 重命名格式
+        rename_format = settings.RENAME_FORMAT(transfer_history.type)
+        dest_path = Path(transfer_history.dest)
+        new_path = DirectoryHelper.get_media_root_path(rename_format, rename_path=dest_path)
+        fn_media_path = self.get_mp_path(new_path)
+        self._del_map[hash] = fn_media_path
+        # 将路径添加到扫描队列
+        self._add_to_scan_queue(fn_media_path)
         return
 
     @eventmanager.register(EventType.TransferComplete)
@@ -309,7 +347,6 @@ class TrimMediaTool(_PluginBase):
         # 复制当前队列并清空
         current_queue = self._scan_queue.copy()
         self._scan_queue.clear()
-        
         # 按媒体库分组扫描
         for library_guid, paths in current_queue.items():
             if not paths:
@@ -319,6 +356,7 @@ class TrimMediaTool(_PluginBase):
                 self._scan_media(library_guid, paths)
             except Exception as e:
                 logger.error(f"扫描 {library_guid} 时发生错误：{str(e)}")
+        self._del_map.clear()
 
     def get_mp_path(self, path: str) -> str:
         """
