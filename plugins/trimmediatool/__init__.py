@@ -102,7 +102,7 @@ class TrimMediaTool(_PluginBase):
 
         # 获取媒体服务器配置
         media_config = self.get_media_config()
-        logger.debug(f"获取飞牛影视配置: {media_config.get('name')}")
+        logger.debug(f"获取飞牛影视配置: {media_config.name}")
         if not media_config or not media_config.name:
             logger.warning("无法获取飞牛媒体服务器配置，请检查配置")
             return None
@@ -208,9 +208,10 @@ class TrimMediaTool(_PluginBase):
         """
         监听整理入库，刷新飞牛媒体库
         """
-        logger.info("收到整理入库完成事件")
         if not self._enabled:
             return
+        
+        logger.info("收到整理入库完成事件")
         
         if not self._media_map_dirs:
             logger.debug("未配置媒体库目录映射，跳过刷新媒体库操作")
