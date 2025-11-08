@@ -211,7 +211,7 @@ class TrimMediaTool(_PluginBase):
         if not self._enabled:
             return
         
-        logger.debug(f"收到{event.event_type}事件,{event}")
+        logger.debug(f"收到{event.event_type}事件,{event.event_data}")
         return
 
     @eventmanager.register(EventType.TransferComplete)
