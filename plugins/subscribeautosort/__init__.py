@@ -175,8 +175,8 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 8,
-                                    'md': 6
+                                    'cols': 4,
+                                    'md': 12
                                 },
                                 'content': [
                                     {
@@ -191,8 +191,8 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 8,
-                                    'md': 6
+                                    'cols': 4,
+                                    'md': 12
                                 },
                                 'content': [
                                     {
@@ -207,8 +207,8 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 8,
-                                    'md': 6
+                                    'cols': 4,
+                                    'md': 12
                                 },
                                 'content': [
                                     {

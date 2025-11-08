@@ -123,7 +123,7 @@ class SubscribeCheck(_PluginBase):
         """
         pass
 
-    @eventmanager.register(EventType.DownloadAdded)
+    @eventmanager.register(EventType.DownloadAdded, priority=9999)
     def handle_download_added(self, event: Event):
         """
         处理下载添加事件
@@ -155,7 +155,7 @@ class SubscribeCheck(_PluginBase):
         service = self.__get_downloader_service(downloader=downloader)
         if not service:
             return
-
+        logger.debug(f"使用下载器实例: {service.name}")
         # 检查下载任务的文件选择状态
         self._check_download_files(torrent_hash, episodes, service.instance)
         return
@@ -173,18 +173,17 @@ class SubscribeCheck(_PluginBase):
         for file in torrent_files:
             # 识别文件集
             file_meta = MetaInfo(Path(file.name).stem)
-            logger.debug(f"当前文件：{file.name},{file_meta}")
+            logger.debug(f"{file_meta.org_string}")
             if file_meta.begin_episode:
                 episode_number = file_meta.begin_episode
-                logger.debug(f"文件：{file.name}，集数：{episode_number}")
-            if episode_number not in dl_episodes:
-                logger.debug(f"不是需要的集数")
-                continue
-            if not file.selected:
-                file_ids.append(file.id)
-                logger.info(f"{file_meta.title}未勾选下载")
+                if episode_number not in dl_episodes:
+                    logger.debug(f"第{episode_number}集跳过")
+                    continue
+                if not file.selected:
+                    file_ids.append(file.id)
+                    logger.debug(f"第{episode_number}集未勾选")
         if not file_ids:
-            logger.info(f"种子文件均已勾选，跳过处理")
+            logger.info(f"订阅下载的文件不需要勾选")
             return
         try:
             result = downloader.set_files(torrent_hash, file_ids)
