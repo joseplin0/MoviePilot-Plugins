@@ -142,7 +142,7 @@ class SubscribeCheck(_PluginBase):
         username = event_data.get("username")
         source = event_data.get("source")
 
-        logger.debug(f"接收到下载事件，来自用户: {username}, 数据: {event.event_data}")
+        logger.debug(f"接收到下载事件，来自用户: {username}")
 
         if not torrent_hash or not context or not context.torrent_info:
             logger.info("没有获取到有效的种子任务信息，跳过处理")
@@ -155,7 +155,6 @@ class SubscribeCheck(_PluginBase):
         service = self.__get_downloader_service(downloader=downloader)
         if not service:
             return
-        logger.debug(f"使用下载器实例: {service.name}")
         # 检查下载任务的文件选择状态
         self._check_download_files(torrent_hash, episodes, service.instance)
         return
@@ -166,9 +165,8 @@ class SubscribeCheck(_PluginBase):
         """
         torrent_files = self.__torrent_get_files(downloader, torrent_hash)
         if not torrent_files:
-            logger.info(f"没有在下载器中获取到 {torrent_hash} 文件列表，跳过处理")
             return
-        logger.info(f"文件{torrent_hash}获取到{len(torrent_files)}个文件")
+        logger.info(f"文件{torrent_hash}获取到{len(torrent_files)}个文件，订阅下载{dl_episodes}")
         file_ids = []
         for file in torrent_files:
             # 识别文件集
@@ -177,20 +175,20 @@ class SubscribeCheck(_PluginBase):
             if file_meta.begin_episode:
                 episode_number = file_meta.begin_episode
                 if episode_number not in dl_episodes:
-                    logger.debug(f"第{episode_number}集跳过")
+                    logger.debug(f"{file_meta.name}第{episode_number}集跳过")
                     continue
                 if not file.selected:
                     file_ids.append(file.id)
-                    logger.debug(f"第{episode_number}集未勾选")
+                    logger.debug(f"{file_meta.name}第{episode_number}集未勾选")
         if not file_ids:
             logger.info(f"订阅下载的文件不需要勾选")
             return
         try:
             result = downloader.set_files(torrent_hash, file_ids)
             if result:
-                logger.info(f"{torrent_hash}已勾选下载")
+                logger.info(f"{len(file_ids)}个文件，已勾选")
             else:
-                logger.info(f"{torrent_hash}已勾选下载失败")
+                logger.info(f"{len(file_ids)}个文件，勾选失败")
         except Exception as e:
             logger.error(f"设置种子文件勾选状态失败，错误: {e}")
         return
