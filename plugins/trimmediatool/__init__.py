@@ -1,6 +1,9 @@
 from pathlib import Path
 from typing import Any, List, Dict, Tuple, Optional
 from threading import Timer
+from app.chain.media import MediaChain
+from app.chain.transfer import TransferChain
+from app.core.metainfo import MetaInfoPath
 from app.helper.directory import DirectoryHelper
 from app.helper.mediaserver import MediaServerHelper
 from app.modules.trimemedia.trimemedia import TrimeMedia
@@ -10,7 +13,6 @@ from app.schemas.types import EventType
 from app.log import logger
 from app.core.event import eventmanager, Event
 from app.core.config import settings
-from app.db.transferhistory_oper import TransferHistoryOper
 
 
 class TrimMediaTool(_PluginBase):
@@ -25,7 +27,7 @@ class TrimMediaTool(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png"
     # 插件版本
-    plugin_version = "1.1.0"
+    plugin_version = "1.1.1"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -38,7 +40,9 @@ class TrimMediaTool(_PluginBase):
     auth_level = 1
 
     server_helper = None
-    transfer_history_oper = None
+    media_chain = None
+    directory_helper = None
+    transfer_chain = None
 
     _enabled = False
     _only_once = False
@@ -62,7 +66,9 @@ class TrimMediaTool(_PluginBase):
         :param config: 配置信息
         """
         self.server_helper = MediaServerHelper()
-        self.transfer_history_oper = TransferHistoryOper()
+        self.media_chain = MediaChain()
+        self.directory_helper = DirectoryHelper()
+        self.transfer_chain = TransferChain()
         
         # 清除缓存，因为配置可能发生了变化
         self._cached_service_info = None
@@ -177,7 +183,7 @@ class TrimMediaTool(_PluginBase):
                   {
                     "component": "VCol",
                     "props": {
-                      "cols": 24,
+                      "cols": 12,
                       "md": 12
                     },
                     "content": [
@@ -188,13 +194,30 @@ class TrimMediaTool(_PluginBase):
                           "label": "媒体库目录映射",
                           "placeholder": "/downloads:/media",
                           "hint": "每行一个映射关系，格式为：媒体库路径:飞牛路径。如果前缀一样，只要配一个就行。",
+                          "persistent-hint": True
                         }
+                      },
+                    ]
+                  },
+                  {
+                    "component": "VCol",
+                    "props": {
+                      "cols": 12,
+                      "md": 12
+                    },
+                    "content": [
+                      {
+                        "component": "VAlert",
+                        "props": {
+                            "type": "info",
+                            "variant": "tonal",
+                            "text": "注意：删除源文件触发的飞牛扫描只支持自动整理"
+                        },
                       },
                     ]
                   }
                 ]
               },
-              
             ]
           }
         ], {
@@ -217,8 +240,6 @@ class TrimMediaTool(_PluginBase):
         if not self._enabled:
             return
         
-        logger.debug(f"源文件删除,{event.event_data}")
-        
         # 获取事件数据
         event_data = event.event_data
         if not event_data:
@@ -226,8 +247,11 @@ class TrimMediaTool(_PluginBase):
             
         # 获取下载哈希
         hash = event_data.get("hash")
-        if not hash:
+        src = event_data.get("src")
+        if not hash or not src:
             return
+        
+        logger.debug(f"源文件删除,{Path(src).name}")
         
         # 先检查是否已在删除映射中
         if hash in self._del_map:
@@ -235,20 +259,15 @@ class TrimMediaTool(_PluginBase):
             self._add_to_scan_queue(self._del_map[hash])
             return
         
-        # 查询转移历史记录
-        transfer_history = self.transfer_history_oper.list_by_hash(hash)
-        if not transfer_history:
-            logger.debug(f"未找到hash {hash} 对应的转移历史记录")
+        # 通过源路径获取重命名后的路径
+        target_path = self.get_rename_dir(src)
+        if not target_path:
             return
-        
-        # 重命名格式
-        rename_format = settings.RENAME_FORMAT(transfer_history[0].type)
-        dest_path = Path(transfer_history[0].dest)
-        new_path = DirectoryHelper.get_media_root_path(rename_format, rename_path=dest_path)
-        fn_media_path = self.get_mp_path(new_path)
-        self._del_map[hash] = fn_media_path
-        # 将路径添加到扫描队列
-        self._add_to_scan_queue(fn_media_path)
+        fn_media_path = self.get_mp_path(str(target_path))
+        if fn_media_path:
+            self._del_map[hash] = fn_media_path
+            # 将路径添加到扫描队列
+            self._add_to_scan_queue(fn_media_path)
         return
 
     @eventmanager.register(EventType.TransferComplete)
@@ -378,6 +397,33 @@ class TrimMediaTool(_PluginBase):
                 return config
         return None
 
+    def get_rename_dir(self, path: str) -> Optional[Path]:
+        """
+        获取重命名目录
+        """
+        src_path = Path(path)
+        meta = MetaInfoPath(src_path)
+        mediainfo = self.media_chain.recognize_media(meta)
+        transfer_directory = self.directory_helper.get_dir(media=mediainfo,src_path=src_path)
+        new_path = self.transfer_chain.recommend_name(meta=meta, mediainfo=mediainfo)
+        media_path = DirectoryHelper.get_media_root_path(
+            rename_format=settings.RENAME_FORMAT(mediainfo.type),
+            rename_path=Path(new_path),
+        )
+        if media_path:
+            new_name = media_path.name
+        else:
+            # fallback
+            parents = Path(new_path).parents
+            if len(parents) > 2:
+                new_name = parents[1].name
+            else:
+                new_name = parents[0].name
+        logger.debug(f"new_name: {new_name}")
+        if transfer_directory and transfer_directory.library_path:
+            return transfer_directory.library_path / Path(new_name)
+        else:
+            return Path(new_name)
 
     def get_service(self) -> List[Dict[str, Any]]:
         """
