@@ -26,7 +26,7 @@ class SubscribeCheck(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_check.png"
     # 插件版本
-    plugin_version = "1.0.1"
+    plugin_version = "1.1.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -43,6 +43,7 @@ class SubscribeCheck(_PluginBase):
 
     # 是否开启
     _enabled = False
+    _notify = False
     _onlyonce = False
     _cron = None
 
@@ -55,6 +56,7 @@ class SubscribeCheck(_PluginBase):
             return
 
         self._enabled = config.get("enabled")
+        self._notify = config.get("notify")
         self._onlyonce = config.get("only_once")
         self._cron = config.get("cron")
 
@@ -102,6 +104,19 @@ class SubscribeCheck(_PluginBase):
                                         },
                                     }
                                 ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "notify",
+                                            "label": "发送通知",
+                                        },
+                                    }
+                                ],
                             }
                         ],
                     }
@@ -109,6 +124,7 @@ class SubscribeCheck(_PluginBase):
             }
         ], {
             "enabled": False,
+            "notify": False,
         }
 
     def get_page(self) -> List[dict]:
@@ -159,7 +175,7 @@ class SubscribeCheck(_PluginBase):
         self._check_download_files(torrent_hash, episodes, service.instance)
         return
 
-    def _check_download_files(self, torrent_hash: str, dl_episodes: List[str], downloader: Transmission):
+    def _check_download_files(self, torrent_hash: str, dl_episodes: List[str], downloader: Transmission,context: Context):
         """
         检查下载文件
         """
@@ -168,6 +184,7 @@ class SubscribeCheck(_PluginBase):
             return
         logger.info(f"文件{torrent_hash}获取到{len(torrent_files)}个文件，订阅下载{dl_episodes}")
         file_ids = []
+        need_checks = []
         for file in torrent_files:
             # 识别文件集
             file_meta = MetaInfo(Path(file.name).stem)
@@ -179,18 +196,37 @@ class SubscribeCheck(_PluginBase):
                     continue
                 if not file.selected:
                     file_ids.append(file.id)
+                    need_checks.append(episode_number)
                     logger.debug(f"{file_meta.name}第{episode_number}集未勾选")
         if not file_ids:
             logger.info(f"订阅下载的文件不需要勾选")
             return
         try:
             result = downloader.set_files(torrent_hash, file_ids)
-            if result:
-                logger.info(f"{len(file_ids)}个文件，已勾选")
-            else:
-                logger.info(f"{len(file_ids)}个文件，勾选失败")
+            
+            self.send_result_msg(text=f"订阅下载文件已勾选，请等待下载完成",result=result)
         except Exception as e:
             logger.error(f"设置种子文件勾选状态失败，错误: {e}")
+        return
+
+    def send_result_msg(self, content: Context, dl_episodes: List[str], need_checks: List[str], result: bool) -> None:
+        """
+        发送通知消息
+        """
+        media_info = content.get('media_info')
+        msg_text = ""
+        if media_info and media_info.title:
+            msg_text = f"剧集：{media_info.title}"
+        if dl_episodes:
+            msg_text = f"{msg_text}\n下载集数：{dl_episodes}"
+        if need_checks:
+            msg_text = f"{msg_text}\n需勾选数：{need_checks}"
+        # 根据result布尔值显示有意义的文本
+        if result:
+            msg_text = f"{msg_text}\n结果：操作成功"
+        else:
+            msg_text = f"{msg_text}\n结果：操作失败"
+        self.post_message(title='检测到下载文件不完整', text=msg_text)
         return
 
     def __get_subscribe_by_source(self, source: str) -> Optional[Dict]:
