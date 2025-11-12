@@ -20,11 +20,11 @@ class SubscribeAutoSort(_PluginBase):
     # 插件名称
     plugin_name = "订阅自动排序"
     # 插件描述
-    plugin_desc = "自动按上映日期对订阅进行排序"
+    plugin_desc = "自动按排序字段对用户的订阅进行排序"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.2.0"
+    plugin_version = "1.3.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -49,6 +49,7 @@ class SubscribeAutoSort(_PluginBase):
     _cron = None
     _sort_order = "asc"  # 排序方向：asc-正序，desc-倒序
     _sort_position = "top"  # 排序位置：top-置顶，down-置底
+    _sort_field = "air_date"  # 排序字段：air_date-上映日期，vote_average-评分，popularity-热度
     _users = []  # 选择的用户列表
     _all_subscribes:List[Subscribe]= []
     subscribe_oper = None
@@ -72,7 +73,9 @@ class SubscribeAutoSort(_PluginBase):
         self._cron = config.get("cron")
         self._sort_order = config.get("sort_order")
         self._sort_position = config.get("sort_position")
+        self._sort_field = config.get("sort_field") or 'air_date'
         self._users = config.get("users") or []
+        self.__update_config()
 
         if self._enabled:
             logger.info(f"订阅自动排序插件已启用")
@@ -85,14 +88,7 @@ class SubscribeAutoSort(_PluginBase):
                                         name="订阅自动排序")
                 # 关闭一次性开关
                 self._onlyonce = False
-                self.update_config({
-                    "only_once": False,
-                    "enabled": self._enabled,
-                    "cron": self._cron,
-                    "sort_order": self._sort_order,
-                    "sort_position": self._sort_position,
-                    "users": self._users
-                })
+                self.__update_config()
                 if self._scheduler.get_jobs():
                     # 启动服务
                     self._scheduler.print_jobs()
@@ -101,13 +97,26 @@ class SubscribeAutoSort(_PluginBase):
     def get_state(self) -> bool:
         return self._enabled
 
+    def __update_config(self):
+        # 保存配置
+        self.update_config(
+            {
+                "only_once": self._onlyonce,
+                "enabled": self._enabled,
+                "cron": self._cron,
+                "sort_order": self._sort_order,
+                "sort_position": self._sort_position,
+                "sort_field": self._sort_field,
+                "users": self._users
+            }
+        )
 
     @eventmanager.register(EventType.SubscribeAdded, priority=9999)
     def on_subscribe_add(self, event: Event):
         """
         监听订阅添加事件，触发排序
         """
-        if not self._enabled:
+        if not self._enabled or not self._sort_field:
             return
             
         if not event or not event.event_data:
@@ -175,8 +184,8 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 4,
-                                    'md': 12
+                                    'cols': 6,
+                                    'md': 2
                                 },
                                 'content': [
                                     {
@@ -191,8 +200,8 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 4,
-                                    'md': 12
+                                    'cols': 6,
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -207,8 +216,8 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 4,
-                                    'md': 12
+                                    'cols': 6,
+                                    'md': 2
                                 },
                                 'content': [
                                     {
@@ -219,17 +228,12 @@ class SubscribeAutoSort(_PluginBase):
                                         }
                                     }
                                 ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
+                            },
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
-                                    'md': 6
+                                    'cols': 6,
+                                    'md': 5
                                 },
                                 'content': [
                                     {
@@ -242,11 +246,49 @@ class SubscribeAutoSort(_PluginBase):
                                     }
                                 ]
                             },
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            
+                            {
+                               'component': 'VCol',
+                               'props': {
+                                   'cols': 6,
+                                   'md': 3
+                               },
+                               'content': [
+                                   {
+                                       'component': 'VSelect',
+                                       'props': {
+                                           'model': 'sort_field',
+                                           'label': '排序字段',
+                                           'items': [
+                                               {
+                                                   'title': '上映日期',
+                                                   'value': 'air_date'
+                                               },
+                                               {
+                                                   'title': '评分',
+                                                   'value': 'vote_average',
+                                                   'props': { 'disabled': True },
+                                               },
+                                               {
+                                                   'title': '热度',
+                                                   'value': 'popularity',
+                                                   'props': { 'disabled': True },
+                                               }
+                                           ]
+                                       }
+                                   }
+                               ]
+                           },
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
-                                    'md': 6
+                                    'cols': 6,
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -260,18 +302,12 @@ class SubscribeAutoSort(_PluginBase):
                                         }
                                     }
                                 ]
-                            }
-                             
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
+                            },
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
-                                    'md': 6
+                                    'cols': 6,
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -296,8 +332,8 @@ class SubscribeAutoSort(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
-                                    'md': 6
+                                    'cols': 6,
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -319,7 +355,6 @@ class SubscribeAutoSort(_PluginBase):
                                     }
                                 ]
                             },
-                            
                         ]
                     },
                     {
@@ -356,6 +391,7 @@ class SubscribeAutoSort(_PluginBase):
             "only_once": False,
             "sort_order": "asc",
             "sort_position": "top",
+            "sort_field": "air_date",
             "cron": "",
             "users": []
         }
@@ -440,39 +476,39 @@ class SubscribeAutoSort(_PluginBase):
             orders = [{"id": subscribe.id} for subscribe in subscribes]
             logger.debug(f"用户{username}{mtype}订阅生成默认排序配置")
 
-        subscribes_with_air_date = []
-        subscribes_without_air_date = []
+        subscribes_with_sort_data = []
+        subscribes_without_sort_data = []
 
         for subscribe in subscribes:
-            air_date = self._air_date_cache.get(subscribe.id)
-            if air_date:
-                subscribes_with_air_date.append(subscribe)
+            sort_value = self._get_sort_field_value(subscribe.id)
+            if sort_value:
+                subscribes_with_sort_data.append(subscribe)
                 logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 需要排序")
-            else:
-                subscribes_without_air_date.append(subscribe)
-                logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 不需要排序")
+        else:
+            subscribes_without_sort_data.append(subscribe)
+            logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 不需要排序")
 
-        # 根据上映日期对有上映日期的订阅进行排序
+        # 根据选择的排序字段对有数据的订阅进行排序
         reverse = self._sort_order == "desc"
-        sorted_by_air_date = sorted(
-            subscribes_with_air_date,
-            key=lambda x: self._air_date_cache.get(x.id),
+        sorted_by_field = sorted(
+            subscribes_with_sort_data,
+            key=lambda x: self._get_sort_field_value(x.id),
             reverse=reverse
         )
         order_text = "正序" if self._sort_order == "asc" else "倒序"
-        logger.debug(f"用户{username}{mtype}订阅 按上映日期{order_text}排序后的: {[s.id for s in sorted_by_air_date]}")
+        logger.debug(f"用户{username}{mtype}订阅 按{self._sort_field}{order_text}排序后的: {[s.id for s in sorted_by_field]}")
 
-        # 创建新的排序配置：有上映日期的按指定顺序排序，没有上映日期的保持原顺序
+        # 创建新的排序配置：有排序数据的按指定顺序排序，没有数据的保持原顺序
         new_orders = []
-        # 没有上映日期的订阅保持原顺序
+        # 没有排序数据的订阅保持原顺序
         new_without_order = []
 
-        # 先添加按上映日期排序的订阅
-        for subscribe in sorted_by_air_date:
+        # 先添加按排序字段排序的订阅
+        for subscribe in sorted_by_field:
             if {"id": subscribe.id} not in new_orders:
                 new_orders.append({"id": subscribe.id})
 
-        # 再添加没有上映日期的订阅，保持它们在原排序中的顺序
+        # 再添加没有排序数据的订阅，保持它们在原排序中的顺序
         # 创建一个映射，用于快速查找订阅ID在原排序中的位置
         original_order_map = {}
         for idx, order in enumerate(orders):
@@ -480,13 +516,13 @@ class SubscribeAutoSort(_PluginBase):
             if order_id:
                 original_order_map[order_id] = idx
 
-        # 对没有上映日期的订阅按原排序顺序进行排序
-        sorted_without_air_date = sorted(
-            subscribes_without_air_date,
+        # 对没有排序数据的订阅按原排序顺序进行排序
+        sorted_without_sort_data = sorted(
+            subscribes_without_sort_data,
             key=lambda x: original_order_map.get(x.id, float('inf')))
 
-        # 添加没有上映日期的订阅
-        for subscribe in sorted_without_air_date:
+        # 添加没有排序数据的订阅
+        for subscribe in sorted_without_sort_data:
             if {"id": subscribe.id} not in new_orders:
                 new_without_order.append({"id": subscribe.id})
 
@@ -507,8 +543,12 @@ class SubscribeAutoSort(_PluginBase):
         """
         订阅自动排序
         """
-        # 预获取上映日期并缓存
-        self._prefetch_air_dates()
+        if not self._sort_field:
+            return
+
+        if self._sort_field == "air_date":
+            # 预获取上映日期并缓存
+            self._prefetch_air_dates()
 
         logger.info("开始执行订阅自动排序任务")
 
@@ -551,6 +591,16 @@ class SubscribeAutoSort(_PluginBase):
         # 使用插件的 save_data 方法缓存上映日期
         self.save_data(self._AIR_DATE_CACHE_KEY, self._air_date_cache)
         logger.info(f"预获取完成，共 {len(self._air_date_cache)} 个订阅的上映日期")
+
+    def _get_sort_field_value(self, subscribeId: str) -> Optional[str]:
+        """
+        获取订阅的排序字段值
+        :param subscribe: 订阅信息
+        :return: 排序字段值，如果获取失败返回 None
+        """
+        if self._sort_field == "air_date":
+            return self._air_date_cache.get(subscribeId)
+        return None
 
     def _get_air_date_from_api(self, subscribe: Subscribe) -> Optional[datetime]:
         """
