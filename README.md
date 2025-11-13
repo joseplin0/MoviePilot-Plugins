@@ -1,5 +1,7 @@
 # MoviePilot-Plugins
 
+MoviePilot 三方插件：https://github.com/joseplin0/MoviePilot-Plugins
+
 ## 插件列表
 
 ### 订阅自动排序 (subscribeAutoSort)
@@ -21,3 +23,7 @@
 - 合并相同媒体库剧集请求，增加延迟功能
 - 监听源文件删除，刷新飞牛
 - [ ] 使用飞牛接口识别需要删除的媒体库
+
+## 许可证
+
+本项目采用 MIT 许可证，详见[LICENSE](LICENSE)文件。
