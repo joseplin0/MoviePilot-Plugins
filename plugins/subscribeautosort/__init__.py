@@ -24,7 +24,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.3.0"
+    plugin_version = "1.3.1"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -107,7 +107,8 @@ class SubscribeAutoSort(_PluginBase):
                 "sort_order": self._sort_order,
                 "sort_position": self._sort_position,
                 "sort_field": self._sort_field,
-                "users": self._users
+                "users": self._users,
+                "is_monitor":self._is_monitor
             }
         )
 
