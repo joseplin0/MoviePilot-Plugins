@@ -26,7 +26,7 @@ class SubscribeCheck(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_check.png"
     # 插件版本
-    plugin_version = "1.1.0"
+    plugin_version = "1.1.1"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -130,6 +130,7 @@ class SubscribeCheck(_PluginBase):
     def get_page(self) -> List[dict]:
         pass
 
+    @staticmethod
     def get_command() -> List[Dict[str, Any]]:
         pass
 
@@ -172,7 +173,7 @@ class SubscribeCheck(_PluginBase):
         if not service:
             return
         # 检查下载任务的文件选择状态
-        self._check_download_files(torrent_hash, episodes, service.instance)
+        self._check_download_files(torrent_hash, episodes, service.instance, context)
         return
 
     def _check_download_files(self, torrent_hash: str, dl_episodes: List[str], downloader: Transmission,context: Context):
@@ -204,16 +205,16 @@ class SubscribeCheck(_PluginBase):
         try:
             result = downloader.set_files(torrent_hash, file_ids)
             
-            self.send_result_msg(text=f"订阅下载文件已勾选，请等待下载完成",result=result)
+            self.send_result_msg(context,dl_episodes,need_checks,result=result)
         except Exception as e:
             logger.error(f"设置种子文件勾选状态失败，错误: {e}")
         return
 
-    def send_result_msg(self, content: Context, dl_episodes: List[str], need_checks: List[str], result: bool) -> None:
+    def send_result_msg(self, context: Context, dl_episodes: List[str], need_checks: List[str], result: bool) -> None:
         """
         发送通知消息
         """
-        media_info = content.get('media_info')
+        media_info = context.get('media_info')
         msg_text = ""
         if media_info and media_info.title:
             msg_text = f"剧集：{media_info.title}"
