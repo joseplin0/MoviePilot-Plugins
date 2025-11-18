@@ -214,6 +214,9 @@ class SubscribeCheck(_PluginBase):
         """
         发送通知消息
         """
+        if not self._notify:
+            logger.debug('未开启消息')
+            return 
         media_info = context.get('media_info')
         msg_text = ""
         if media_info and media_info.title:
