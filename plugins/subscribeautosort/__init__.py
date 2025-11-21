@@ -24,7 +24,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.3.1"
+    plugin_version = "1.4.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -42,6 +42,7 @@ class SubscribeAutoSort(_PluginBase):
 
     # 私有属性
     _enabled = False
+    _notify = False
 
     # 是否监听订阅
     _is_monitor = False
@@ -68,6 +69,7 @@ class SubscribeAutoSort(_PluginBase):
             return
 
         self._enabled = config.get("enabled")
+        self._notify = config.get('notify')
         self._is_monitor = config.get("is_monitor")
         self._onlyonce = config.get("only_once")
         self._cron = config.get("cron")
@@ -108,7 +110,8 @@ class SubscribeAutoSort(_PluginBase):
                 "sort_position": self._sort_position,
                 "sort_field": self._sort_field,
                 "users": self._users,
-                "is_monitor":self._is_monitor
+                "is_monitor":self._is_monitor,
+                "notify":self._notify
             }
         )
 
@@ -134,6 +137,36 @@ class SubscribeAutoSort(_PluginBase):
         else:
             self.subscribe_auto_sort()
         return
+    
+
+    @eventmanager.register(EventType.PluginAction)
+    def subscribe_sort(self, event: Event = None):
+        if not event:
+            return
+        event_data = event.event_data
+        action = event_data.get("action")
+        if not event_data or action != "subscribe_auto_sort":
+            return
+        
+        logger.info(f'收到消息{event_data}')
+        
+        channel = event_data.get("channel")
+        userid = event_data.get("user")
+        source = event_data.get("source")
+        username = None
+        # 通过用户ID获取用户名
+        if userid:
+            # 获取所有用户
+            all_users = self.user_oper.list()
+            # 在用户列表中查找对应userid的用户
+            for user_data in all_users:
+                if str(user_data.id) == str(userid):
+                    username = user_data.name
+                    break
+        msg_text = self.subscribe_auto_sort(username=username)
+        self.post_message(channel=channel, title="订阅排序",
+                              userid=userid, source=source,text=msg_text)
+        return
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -143,22 +176,17 @@ class SubscribeAutoSort(_PluginBase):
         """
         return [{
             "cmd": "/subscribe_auto_sort",
-            "event": "subscribe_auto_sort",
-            "desc": "订阅自动排序",
+            "event": EventType.PluginAction,
+            "desc": "订阅排序",
             "category": "订阅",
-            "data": {}
+            "data": {
+                "action":"subscribe_auto_sort"
+            }
         }]
 
     def get_api(self) -> List[Dict[str, Any]]:
         """
         获取插件API
-        [{
-            "path": "/subscribe_auto_sort",
-            "endpoint": self.subscribe_auto_sort,
-            "methods": ["GET"],
-            "summary": "订阅自动排序",
-            "description": "手动触发订阅自动排序"
-        }]
         """
         return [{
             "path": "/subscribe_auto_sort",
@@ -186,7 +214,7 @@ class SubscribeAutoSort(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 6,
-                                    'md': 2
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -194,6 +222,22 @@ class SubscribeAutoSort(_PluginBase):
                                         'props': {
                                             'model': 'enabled',
                                             'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 6,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送消息',
                                         }
                                     }
                                 ]
@@ -218,7 +262,7 @@ class SubscribeAutoSort(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 6,
-                                    'md': 2
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -229,12 +273,17 @@ class SubscribeAutoSort(_PluginBase):
                                         }
                                     }
                                 ]
-                            },
+                            }
+                        ]
+                    },
+                    {
+                        'component':'VRow',
+                        'content':[
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 6,
-                                    'md': 5
+                                    'cols': 12,
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -394,7 +443,8 @@ class SubscribeAutoSort(_PluginBase):
             "sort_position": "top",
             "sort_field": "air_date",
             "cron": "",
-            "users": []
+            "users": [],
+            "notify":False
         }
 
     def get_page(self) -> List[dict]:
@@ -449,7 +499,7 @@ class SubscribeAutoSort(_PluginBase):
         logger.debug(f"用户{username}{mtype}订阅：{len(subscribes)}个")
         return subscribes or []
 
-    def sort_queue_by_user(self, username: str,mtype: str = MediaType.TV.value) -> str:
+    def sort_queue_by_user(self, username: str,mtype: str = MediaType.TV.value) -> bool:
         """
         根据用户的排序配置对订阅列表进行排序
         :param username: 用户名
@@ -460,7 +510,7 @@ class SubscribeAutoSort(_PluginBase):
         subscribes = self.get_subscribe_by_user(username,mtype)
         if len(subscribes) <= 1:
             logger.info(f"用户{username}{mtype}订阅数量不足，无需排序")
-            return
+            return f"{mtype}订阅数量不足，无需排序"
 
         logger.info(f"用户{username}{mtype}订阅开始处理 {len(subscribes)} 个订阅的排序")
         # 获取当前的排序配置
@@ -468,7 +518,7 @@ class SubscribeAutoSort(_PluginBase):
         if orders is None:
             # 如果获取配置失败，记录错误并返回
             logger.error(f"用户{username}{mtype}订阅获取排序配置失败，任务终止")
-            return "获取订阅排序配置失败，任务终止"
+            return f"{mtype}订阅获取排序配置失败，任务终止"
 
         logger.debug(f"用户{username}{mtype}订阅当前排序配置: {orders}")
         if not orders:
@@ -535,12 +585,13 @@ class SubscribeAutoSort(_PluginBase):
 
         # 保存新的排序配置
         self.set_user_config(username, new_orders, mtype)
+
         logger.debug(f"用户{username}{mtype}订阅排序配置已保存，共 {len(new_orders)} 个订阅")
 
         logger.info(f"用户{username}{mtype}订阅自动排序任务执行完成，排序方向: {order_text}")
-        return f"订阅自动排序执行完成，共处理 {len(subscribes)} 个订阅，排序方向: {order_text}"
+        return f"{mtype}订阅排序配置已保存"
 
-    def subscribe_auto_sort(self,types: List[str] = [MediaType.MOVIE.value, MediaType.TV.value]) -> str:
+    def subscribe_auto_sort(self,types: List[str] = [MediaType.MOVIE.value, MediaType.TV.value], username: str = None) -> str:
         """
         订阅自动排序
         """
@@ -552,22 +603,30 @@ class SubscribeAutoSort(_PluginBase):
             self._prefetch_air_dates()
 
         logger.info("开始执行订阅自动排序任务")
-
+        if username:
+            users = [username]
+        else: 
+            users = self._users
         # 确定要处理的用户列表
-        if not self._users:
+        if not users:
             logger.warning("未配置用户，任务终止")
-            return
+            return '未配置用户，任务终止'
 
         logger.info(f"将处理以下用户的订阅: {self._users}")
 
+        msgList = []
+
         for username in self._users:
+            msgList.append(f"用户{username}：")
             for mtype in types:
                 logger.info(f"用户{username}{mtype}订阅开始排序")
-                result = self.sort_queue_by_user(username,mtype)
-                if result:
-                    logger.info(f"用户{username}{mtype}订阅排序任务已完成")
-        logger.info("所有用户的订阅排序任务已执行")
-        return "订阅自动排序任务全部完成"
+                result_msg = self.sort_queue_by_user(username,mtype)
+                msgList.append(result_msg)
+        # 将消息列表用换行符分隔成字符串
+        msg_text = "\n".join(msgList)
+        if self._notify:
+            self.post_message(title='订阅排序', text=msg_text)
+        return msg_text
 
     def _prefetch_air_dates(self):
         """
