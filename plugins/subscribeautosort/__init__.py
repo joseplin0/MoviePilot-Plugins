@@ -252,8 +252,8 @@ class SubscribeAutoSort(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'only_once',
-                                            'label': '立即运行一次',
+                                            'model': 'is_monitor',
+                                            'label': '监听订阅',
                                         }
                                     }
                                 ]
@@ -268,12 +268,12 @@ class SubscribeAutoSort(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'is_monitor',
-                                            'label': '监听订阅',
+                                            'model': 'only_once',
+                                            'label': '立即运行一次',
                                         }
                                     }
                                 ]
-                            }
+                            },
                         ]
                     },
                     {
