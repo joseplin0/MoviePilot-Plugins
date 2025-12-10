@@ -13,11 +13,13 @@ MoviePilot 三方插件：https://github.com/joseplin0/MoviePilot-Plugins
 - [x] 增加通知
 - [x] 消息指令触发排序
 - [x] 排序选项
+  - [x] 上映日期
   - [ ] 最近下载
   - [ ] 集数
   - [ ] 豆瓣评分
-- [ ] 订阅状态变更时触发排序
 - [ ] 增加监听事件选项
+  - [x] 新增订阅
+  - [ ] ~~订阅状态修改~~
 - [ ] 清除排序
 
 ### 订阅检查 (subscribecheck)
