@@ -24,7 +24,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.4.0"
+    plugin_version = "1.4.1"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -535,9 +535,9 @@ class SubscribeAutoSort(_PluginBase):
             if sort_value:
                 subscribes_with_sort_data.append(subscribe)
                 logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 需要排序")
-        else:
-            subscribes_without_sort_data.append(subscribe)
-            logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 不需要排序")
+            else:
+                subscribes_without_sort_data.append(subscribe)
+                logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 不需要排序")
 
         # 根据选择的排序字段对有数据的订阅进行排序
         reverse = self._sort_order == "desc"
