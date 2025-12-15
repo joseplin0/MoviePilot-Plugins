@@ -527,6 +527,14 @@ class SubscribeAutoSort(_PluginBase):
             orders = [{"id": subscribe.id} for subscribe in subscribes]
             logger.debug(f"用户{username}{mtype}订阅生成默认排序配置")
 
+        elif len(orders) < len(subscribes):
+            logger.info(f"用户{username}{mtype}订阅排序配置数量少于订阅数量，补全默认排序")
+            existing_ids = {order["id"] for order in orders}
+            for subscribe in subscribes:
+                if subscribe.id not in existing_ids:
+                    orders.append({"id": subscribe.id})
+            logger.debug(f"用户{username}{mtype}订阅补全默认排序配置: {orders}")
+
         subscribes_with_sort_data = []
         subscribes_without_sort_data = []
 
