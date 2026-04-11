@@ -24,7 +24,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.4.1"
+    plugin_version = "1.4.2"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -655,6 +655,9 @@ class SubscribeAutoSort(_PluginBase):
                 air_date = self._get_air_date_from_api(subscribe)
                 if air_date:
                     self._air_date_cache[subscribe.id] = air_date
+                else:
+                    # API没有返回日期，清除缓存中的旧值，避免使用过期的上映日期
+                    self._air_date_cache.pop(subscribe.id, None)
 
         # 使用插件的 save_data 方法缓存上映日期
         self.save_data(self._AIR_DATE_CACHE_KEY, self._air_date_cache)
