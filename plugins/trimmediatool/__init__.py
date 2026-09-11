@@ -27,7 +27,7 @@ class TrimMediaTool(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png"
     # 插件版本
-    plugin_version = "1.1.1"
+    plugin_version = "1.1.2"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -303,6 +303,24 @@ class TrimMediaTool(_PluginBase):
         self._add_to_scan_queue(fn_media_path)
 
 
+    def _remove_useless(self, library_guid: str) -> bool:
+        """
+        扫描前保留媒体库文件，避免飞牛显示删除列表导致无法扫描
+        :param library_guid: 媒体库ID
+        :return: 是否成功
+        """
+        # 获取媒体库信息
+        trimemedia: TrimeMedia = self.service_info.instance
+        trimemedia.api.task_running()
+        data = {"mdb_guid": library_guid, "remove_type": 2}
+        if (res := trimemedia.api.request("/task/removeUseless", method="post", data=data)) and res.success:
+            logger.debug(f"已发送保留媒体库文件请求{res}")
+            # 返回 {msg: "", code: 0, data: true}，data 为 true 才算成功
+            if res.data:
+                return True
+        logger.warning(f"保留媒体库文件请求失败：{res}")
+        return False
+
     def _scan_media(self, library_guid: str, media_paths: List[str]) -> bool:
         """
         扫描媒体文件
@@ -312,6 +330,8 @@ class TrimMediaTool(_PluginBase):
         # 获取媒体库信息
         trimemedia: TrimeMedia = self.service_info.instance
         trimemedia.api.task_running()
+        # 扫描前先保留媒体库文件，避免飞牛显示删除列表导致无法扫描
+        self._remove_useless(library_guid)
         data = { "dir_list": media_paths }
         if (res := trimemedia.api.request(f"/mdb/scan/{library_guid}", method="post", data=data)) and res.success:
             logger.debug(f"已发送扫描请求{res}")

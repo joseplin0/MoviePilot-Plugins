@@ -35,12 +35,14 @@
     "name": "飞牛影视助手",
     "description": "入库或删除源文件自动触发飞牛扫描，支持未入库的媒体文件",
     "labels": "媒体库",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "icon": "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/trimmedia.png",
     "author": "joseplin0",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.1.2": "扫描前调用飞牛保留媒体库文件接口，避免删除记录导致无法扫描",
+      "v1.1.1": "修复删除源文件无法扫描飞牛的问题",
       "v1.1.0": "监听源文件删除，刷新飞牛",
       "v1.0.0": "合并相同媒体库剧集请求，增加延迟功能",
       "v0.9.0": "自动触发飞牛扫描文件夹，支持未入库的媒体文件"
