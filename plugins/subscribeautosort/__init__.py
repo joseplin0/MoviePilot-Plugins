@@ -24,7 +24,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.4.2"
+    plugin_version = "1.4.3"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -58,6 +58,7 @@ class SubscribeAutoSort(_PluginBase):
     _AIR_DATE_CACHE_KEY = "air_date_cache"
     _air_date_cache = {}  # 上映日期缓存
 
+   
     def init_plugin(self, config: dict = None):
         self.tmdb = TmdbApi()
         # 初始化数据库操作
@@ -680,13 +681,22 @@ class SubscribeAutoSort(_PluginBase):
         :return: 上映日期，如果获取失败返回 None
         """
         try:
+            # 优先使用订阅自带的上映日期（v3 数据库已存储，避免依赖 TMDB API）
+            if subscribe.date:
+                return subscribe.date.strftime("%Y-%m-%d") if isinstance(subscribe.date, datetime) \
+                    else str(subscribe.date)[:10]
+            # 兼容 MoviePilot v2（tmdbid）与 v3（media_id）
+            tmdbid = getattr(subscribe, "media_id", None) or getattr(subscribe, "tmdbid", None)
+            if not tmdbid:
+                logger.error(f"订阅 {subscribe.name} 无法获取媒体ID，跳过")
+                return None
             if(subscribe.type == MediaType.TV.value):
-                season = self.tmdb.get_tv_season_detail(subscribe.tmdbid, subscribe.season)
+                season = self.tmdb.get_tv_season_detail(tmdbid, subscribe.season)
                 logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {season.get('air_date') if season else '无'}")
                 if season:
                     return season.get('air_date')
             elif(subscribe.type == MediaType.MOVIE.value):
-                movie = self.tmdb.get_info(MediaType.MOVIE,subscribe.tmdbid)
+                movie = self.tmdb.get_info(MediaType.MOVIE, tmdbid)
                 logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {movie.get('release_date') if movie else '无'}")
                 if movie:
                     return movie.get('release_date')
