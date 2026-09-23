@@ -648,11 +648,12 @@ class SubscribeAutoSort(_PluginBase):
         来源与 ID 只是参数，返回的 MediaInfo.release_date 即上映日期。
         兼容 MoviePilot v2（source/mediaid）与 v3（media_source/media_id）参数名。
 
-        电视剧按订阅的季号取该季首播日：从 MediaInfo.season_info 中找
-        season_number == subscribe.season 的季，取其 air_date；
+        电视剧按当前季取该季首播日：当前季取 MediaInfo.number_of_seasons
+        （媒体最新季）；从 MediaInfo.season_info 中找
+        season_number == 当前季 的季，取其 air_date；
         该季 air_date 为空（还没出）则返回 None，归到「无排序数据」组保持原顺序；
         season_info 整体为空或找不到该季则回退 release_date。
-        电影及整剧订阅（无 season）直接用 release_date。
+        电影及无当前季直接用 release_date。
         :param subscribe: 订阅信息
         :return: 上映日期，如果获取失败返回 None
         """
@@ -671,31 +672,33 @@ class SubscribeAutoSort(_PluginBase):
                 logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: 无")
                 return None
             release_date = mediainfo.release_date
-            # 电视剧按订阅季号取该季首播日
+            # 电视剧按当前季取该季首播日
             if mtype == MediaType.TV:
-                season = getattr(subscribe, "season", None)
-                if season is not None:
-                    season_info = getattr(mediainfo, "season_info", None) or []
-                    for season_item in season_info:
-                        if getattr(season_item, "season_number", None) == season:
-                            season_air_date = getattr(season_item, "air_date", None)
-                            if season_air_date:
+                # 先取 season_info，再获取 number_of_seasons 定位当前季
+                season_info = getattr(mediainfo, "season_info", None) or []
+                if season_info:
+                    season = getattr(mediainfo, "number_of_seasons", None)
+                    if season is not None:
+                        for season_item in season_info:
+                            if getattr(season_item, "season_number", None) == season:
+                                season_air_date = getattr(season_item, "air_date", None)
+                                if season_air_date:
+                                    logger.debug(
+                                        f"获取{subscribe.type}订阅 {subscribe.name} "
+                                        f"第{season}季首播日: {season_air_date}"
+                                    )
+                                    return season_air_date
+                                # 该季还没出（air_date 为空），不参与排序
                                 logger.debug(
                                     f"获取{subscribe.type}订阅 {subscribe.name} "
-                                    f"第{season}季首播日: {season_air_date}"
+                                    f"第{season}季首播日: 无（该季未播出）"
                                 )
-                                return season_air_date
-                            # 该季还没出（air_date 为空），不参与排序
-                            logger.debug(
-                                f"获取{subscribe.type}订阅 {subscribe.name} "
-                                f"第{season}季首播日: 无（该季未播出）"
-                            )
-                            return None
-                    # season_info 中找不到该季，回退 release_date
-                    logger.debug(
-                        f"订阅 {subscribe.name} season_info 未找到第{season}季，"
-                        f"回退 release_date: {release_date}"
-                    )
+                                return None
+                        # season_info 中找不到该季，回退 release_date
+                        logger.debug(
+                            f"订阅 {subscribe.name} season_info 未找到第{season}季，"
+                            f"回退 release_date: {release_date}"
+                        )
             if release_date:
                 logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {release_date}")
                 return release_date
