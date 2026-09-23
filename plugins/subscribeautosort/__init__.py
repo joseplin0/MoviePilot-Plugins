@@ -25,7 +25,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.4.4"
+    plugin_version = "1.4.5"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -129,7 +129,7 @@ class SubscribeAutoSort(_PluginBase):
         if not self._is_monitor:
             logger.info("插件未启用监听订阅功能，跳过处理")
             return
-        mediainfo_dict: Dict = event.event_data.get("mediainfo")
+        mediainfo_dict: Dict = event.event_data.get("mediainfo") or {}
         media_type = mediainfo_dict.get("type")
         logger.info(f"收到{media_type}{mediainfo_dict.get('title')}订阅添加事件")
         if media_type:
@@ -612,20 +612,22 @@ class SubscribeAutoSort(_PluginBase):
 
 
         logger.info("开始执行订阅自动排序任务")
+        # 预加载所有订阅到内存，供管理员分支 get_subscribe_by_type 过滤使用
+        self.get_subscribe_all()
         if username:
             users = [username]
-        else: 
+        else:
             users = self._users
         # 确定要处理的用户列表
         if not users:
             logger.warning("未配置用户，任务终止")
             return '未配置用户，任务终止'
 
-        logger.info(f"将处理以下用户的订阅: {self._users}")
+        logger.info(f"将处理以下用户的订阅: {users}")
 
         msgList = []
 
-        for username in self._users:
+        for username in users:
             msgList.append(f"用户{username}：")
             for mtype in types:
                 logger.info(f"用户{username}{mtype}订阅开始排序")
