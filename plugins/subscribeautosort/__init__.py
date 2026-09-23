@@ -1,3 +1,4 @@
+import inspect
 from datetime import datetime,timedelta
 from typing import Any, List, Dict, Tuple, Optional
 from app.plugins import _PluginBase
@@ -9,7 +10,7 @@ from app.schemas.types import EventType
 from app.core.event import eventmanager, Event
 from app.core.config import settings
 from app.log import logger
-from app.modules.themoviedb.tmdbapi import TmdbApi
+from app.chain.media import MediaChain
 from app.db.subscribe_oper import SubscribeOper
 from app.db.userconfig_oper import UserConfigOper
 from app.db.models.subscribe import Subscribe
@@ -54,13 +55,11 @@ class SubscribeAutoSort(_PluginBase):
     _users = []  # 选择的用户列表
     _all_subscribes:List[Subscribe]= []
     subscribe_oper = None
-    # 上映日期缓存键名
-    _AIR_DATE_CACHE_KEY = "air_date_cache"
-    _air_date_cache = {}  # 上映日期缓存
+
 
    
     def init_plugin(self, config: dict = None):
-        self.tmdb = TmdbApi()
+
         # 初始化数据库操作
         self.subscribe_oper = SubscribeOper()
         self.userConfig_oper = UserConfigOper()
@@ -536,12 +535,16 @@ class SubscribeAutoSort(_PluginBase):
                     orders.append({"id": subscribe.id})
             logger.debug(f"用户{username}{mtype}订阅补全默认排序配置: {orders}")
 
+        # 单次任务内计算排序值，避免同一订阅重复请求；不落盘缓存
+        air_date_map: Dict[int, Optional[str]] = {
+            subscribe.id: self._get_air_date(subscribe) for subscribe in subscribes
+        }
+
         subscribes_with_sort_data = []
         subscribes_without_sort_data = []
 
         for subscribe in subscribes:
-            sort_value = self._get_sort_field_value(subscribe.id)
-            if sort_value:
+            if air_date_map.get(subscribe.id):
                 subscribes_with_sort_data.append(subscribe)
                 logger.debug(f"用户{username}{mtype}订阅 {subscribe.name} 需要排序")
             else:
@@ -552,7 +555,7 @@ class SubscribeAutoSort(_PluginBase):
         reverse = self._sort_order == "desc"
         sorted_by_field = sorted(
             subscribes_with_sort_data,
-            key=lambda x: self._get_sort_field_value(x.id),
+            key=lambda x: air_date_map.get(x.id) or "",
             reverse=reverse
         )
         order_text = "正序" if self._sort_order == "asc" else "倒序"
@@ -607,9 +610,6 @@ class SubscribeAutoSort(_PluginBase):
         if not self._sort_field:
             return
 
-        if self._sort_field == "air_date":
-            # 预获取上映日期并缓存
-            self._prefetch_air_dates()
 
         logger.info("开始执行订阅自动排序任务")
         if username:
@@ -637,72 +637,74 @@ class SubscribeAutoSort(_PluginBase):
             self.post_message(title='订阅排序', text=msg_text)
         return msg_text
 
-    def _prefetch_air_dates(self):
+    def _get_air_date(self, subscribe: Subscribe) -> Optional[str]:
         """
-        预获取所有订阅的上映日期，并使用插件的 save_data 来缓存
-        """
-        logger.info("开始预获取订阅上映日期")
-        subscribes = self.get_subscribe_all()
-        if not subscribes:
-            logger.info("没有订阅需要处理")
-            return
+        获取订阅的上映日期（YYYY-MM-DD），不落盘缓存
 
-        # 加载缓存时将键转换为整数
-        cache_data = self.get_data(self._AIR_DATE_CACHE_KEY) or {}
-        self._air_date_cache = {int(k): v for k, v in cache_data.items()}
-
-        for subscribe in subscribes:
-            if (subscribe.id not in self._air_date_cache) or subscribe.lack_episode == subscribe.total_episode:
-                air_date = self._get_air_date_from_api(subscribe)
-                if air_date:
-                    self._air_date_cache[subscribe.id] = air_date
-                else:
-                    # API没有返回日期，清除缓存中的旧值，避免使用过期的上映日期
-                    self._air_date_cache.pop(subscribe.id, None)
-
-        # 使用插件的 save_data 方法缓存上映日期
-        self.save_data(self._AIR_DATE_CACHE_KEY, self._air_date_cache)
-        logger.info(f"预获取完成，共 {len(self._air_date_cache)} 个订阅的上映日期")
-
-    def _get_sort_field_value(self, subscribeId: str) -> Optional[str]:
-        """
-        获取订阅的排序字段值
-        :param subscribe: 订阅信息
-        :return: 排序字段值，如果获取失败返回 None
-        """
-        if self._sort_field == "air_date":
-            return self._air_date_cache.get(subscribeId)
-        return None
-
-    def _get_air_date_from_api(self, subscribe: Subscribe) -> Optional[datetime]:
-        """
-        从API获取订阅的上映日期
+        统一走主程序的媒体识别入口 MediaChain().recognize_media
+        （即 /api/v1/media/{media_id}?media_source=xxx 内部使用的方法），
+        来源与 ID 只是参数，返回的 MediaInfo.release_date 即上映日期。
+        兼容 MoviePilot v2（source/mediaid）与 v3（media_source/media_id）参数名。
         :param subscribe: 订阅信息
         :return: 上映日期，如果获取失败返回 None
         """
-        try:
-            # 优先使用订阅自带的上映日期（v3 数据库已存储，避免依赖 TMDB API）
-            if subscribe.date:
-                return subscribe.date.strftime("%Y-%m-%d") if isinstance(subscribe.date, datetime) \
-                    else str(subscribe.date)[:10]
-            # 兼容 MoviePilot v2（tmdbid）与 v3（media_id）
-            tmdbid = getattr(subscribe, "media_id", None) or getattr(subscribe, "tmdbid", None)
-            if not tmdbid:
-                logger.error(f"订阅 {subscribe.name} 无法获取媒体ID，跳过")
-                return None
-            if(subscribe.type == MediaType.TV.value):
-                season = self.tmdb.get_tv_season_detail(tmdbid, subscribe.season)
-                logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {season.get('air_date') if season else '无'}")
-                if season:
-                    return season.get('air_date')
-            elif(subscribe.type == MediaType.MOVIE.value):
-                movie = self.tmdb.get_info(MediaType.MOVIE, tmdbid)
-                logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {movie.get('release_date') if movie else '无'}")
-                if movie:
-                    return movie.get('release_date')
-        except Exception as e:
-            logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 剧集信息失败: {str(e)}")
+        media_source, media_id = self._subscribe_media_identity(subscribe)
+        if not media_source or not media_id:
+            logger.warning(f"订阅 {subscribe.name} 缺少媒体身份，跳过")
             return None
+        try:
+            mtype = MediaType(subscribe.type)
+        except ValueError:
+            logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+            return None
+        try:
+            mediainfo = self._recognize_media(subscribe, media_source, media_id, mtype)
+            if mediainfo and mediainfo.release_date:
+                logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {mediainfo.release_date}")
+                return mediainfo.release_date
+            logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: 无")
+        except Exception as e:
+            logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期失败: {str(e)}")
+        return None
+
+    @staticmethod
+    def _subscribe_media_identity(subscribe: Subscribe) -> Tuple[Optional[str], Optional[str]]:
+        """
+        解析订阅的统一媒体身份（media_source, media_id），兼容 MoviePilot v2/v3
+        """
+        media_source = getattr(subscribe, "media_source", None)
+        media_id = getattr(subscribe, "media_id", None)
+        if media_source and media_id:
+            return media_source, str(media_id)
+        # 回退 v2 老数据的来源原生 ID 字段
+        for source, attr in (
+            ("themoviedb", "tmdbid"),
+            ("douban", "doubanid"),
+            ("bangumi", "bangumiid"),
+            ("anilist", "anilistid"),
+        ):
+            value = getattr(subscribe, attr, None)
+            if value:
+                return source, str(value)
+        return None, None
+
+    @staticmethod
+    def _recognize_media(subscribe: Subscribe, media_source: str, media_id: str, mtype: MediaType) -> Optional[Any]:
+        """
+        调用主程序统一识别入口，兼容 v2(source/mediaid) 与 v3(media_source/media_id) 参数名
+        """
+        chain = MediaChain()
+        params = inspect.signature(chain.recognize_media).parameters
+        kwargs: Dict[str, Any] = {"mtype": mtype}
+        if "media_source" in params:
+            kwargs["media_source"] = media_source
+            kwargs["media_id"] = media_id
+        else:
+            kwargs["source"] = media_source
+            kwargs["mediaid"] = media_id
+        if "episode_group" in params:
+            kwargs["episode_group"] = getattr(subscribe, "episode_group", None)
+        return chain.recognize_media(**kwargs)
 
     def get_service(self) -> List[Dict[str, Any]]:
         """
