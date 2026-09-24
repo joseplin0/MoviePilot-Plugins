@@ -25,7 +25,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.4.7"
+    plugin_version = "1.4.8"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -682,8 +682,8 @@ class SubscribeAutoSort(_PluginBase):
                     season = getattr(mediainfo, "number_of_seasons", None)
                     if season is not None:
                         for season_item in season_info:
-                            if getattr(season_item, "season_number", None) == season:
-                                season_air_date = getattr(season_item, "air_date", None)
+                            if self._season_field(season_item, "season_number") == season:
+                                season_air_date = self._season_field(season_item, "air_date")
                                 if season_air_date:
                                     logger.debug(
                                         f"获取{subscribe.type}订阅 {subscribe.name} "
@@ -710,6 +710,16 @@ class SubscribeAutoSort(_PluginBase):
         except Exception as e:
             logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期失败: {str(e)}")
         return None
+
+    @staticmethod
+    def _season_field(season_item: Any, key: str) -> Optional[Any]:
+        """
+        读取 season_info 中某一季的字段，兼容 dict（主程序 domain MediaInfo）
+        与对象（旧版 schema）两种形式
+        """
+        if isinstance(season_item, dict):
+            return season_item.get(key)
+        return getattr(season_item, key, None)
 
     @staticmethod
     def _subscribe_media_identity(subscribe: Subscribe) -> Tuple[Optional[str], Optional[str]]:
