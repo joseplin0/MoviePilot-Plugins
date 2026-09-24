@@ -25,7 +25,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.4.7"
+    plugin_version = "1.5.0"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -45,8 +45,8 @@ class SubscribeAutoSort(_PluginBase):
     _enabled = False
     _notify = False
 
-    # 是否监听订阅
-    _is_monitor = False
+    # 监听的订阅事件：subscribe_added-订阅添加，state_change-状态变更
+    _monitor_events = []
     _onlyonce = False
     _cron = None
     _sort_order = "asc"  # 排序方向：asc-正序，desc-倒序
@@ -70,7 +70,13 @@ class SubscribeAutoSort(_PluginBase):
 
         self._enabled = config.get("enabled")
         self._notify = config.get('notify')
-        self._is_monitor = config.get("is_monitor")
+        # 兼容旧配置 is_monitor（仅监听订阅添加），迁移到具体事件选项
+        if config.get("monitor_events"):
+            self._monitor_events = config.get("monitor_events")
+        elif config.get("is_monitor"):
+            self._monitor_events = ["subscribe_added"]
+        else:
+            self._monitor_events = []
         self._onlyonce = config.get("only_once")
         self._cron = config.get("cron")
         self._sort_order = config.get("sort_order")
@@ -110,7 +116,7 @@ class SubscribeAutoSort(_PluginBase):
                 "sort_position": self._sort_position,
                 "sort_field": self._sort_field,
                 "users": self._users,
-                "is_monitor":self._is_monitor,
+                "monitor_events": self._monitor_events,
                 "notify":self._notify
             }
         )
@@ -126,8 +132,8 @@ class SubscribeAutoSort(_PluginBase):
         if not event or not event.event_data:
                 return
 
-        if not self._is_monitor:
-            logger.info("插件未启用监听订阅功能，跳过处理")
+        if "subscribe_added" not in self._monitor_events:
+            logger.info("插件未启用监听订阅添加功能，跳过处理")
             return
         mediainfo_dict: Dict = event.event_data.get("mediainfo") or {}
         media_type = mediainfo_dict.get("type")
@@ -137,7 +143,44 @@ class SubscribeAutoSort(_PluginBase):
         else:
             self.subscribe_auto_sort()
         return
-    
+
+    @eventmanager.register(EventType.SubscribeModified, priority=9999)
+    def on_subscribe_modified(self, event: Event):
+        """
+        监听订阅状态变更事件（PUT /status/{subid}，scene=status）。
+        仅处理状态变更场景，变为暂停（state=P）时不触发排序，其余状态变更触发排序。
+        """
+        if not self._enabled or not self._sort_field:
+            return
+
+        if "state_change" not in self._monitor_events:
+            logger.info("插件未启用监听状态变更功能，跳过处理")
+            return
+
+        if not event or not event.event_data:
+            return
+
+        event_data: Dict = event.event_data
+        # 仅处理状态变更场景，忽略普通字段更新/重置/agent 更新
+        if event_data.get("scene") != "status":
+            logger.debug("订阅修改为非状态变更场景，跳过处理")
+            return
+
+        subscribe_info: Dict = event_data.get("subscribe_info") or {}
+        new_state = subscribe_info.get("state")
+        # 变为暂停（P）不触发排序
+        if new_state == "P":
+            logger.info("订阅状态变更为暂停，跳过排序")
+            return
+
+        media_type = subscribe_info.get("type")
+        logger.info(f"收到订阅状态变更事件，新状态：{new_state}")
+        if media_type:
+            self.subscribe_auto_sort([media_type])
+        else:
+            self.subscribe_auto_sort()
+        return
+
 
     @eventmanager.register(EventType.PluginAction)
     def subscribe_sort(self, event: Event = None):
@@ -252,28 +295,44 @@ class SubscribeAutoSort(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'is_monitor',
-                                            'label': '监听订阅',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 6,
-                                    'md': 3
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
                                             'model': 'only_once',
                                             'label': '立即运行一次',
                                         }
                                     }
                                 ]
                             },
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'monitor_events',
+                                            'label': '监听事件',
+                                            'multiple': True,
+                                            'chips': True,
+                                            'items': [
+                                                {
+                                                    'title': '订阅添加',
+                                                    'value': 'subscribe_added'
+                                                },
+                                                {
+                                                    'title': '状态变更',
+                                                    'value': 'state_change'
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
                         ]
                     },
                     {
@@ -435,9 +494,9 @@ class SubscribeAutoSort(_PluginBase):
                     }
                 ]
             }
-        ], {
+        ],         {
             "enabled": False,
-            "is_monitor": False,
+            "monitor_events": [],
             "only_once": False,
             "sort_order": "asc",
             "sort_position": "top",
@@ -682,8 +741,8 @@ class SubscribeAutoSort(_PluginBase):
                     season = getattr(mediainfo, "number_of_seasons", None)
                     if season is not None:
                         for season_item in season_info:
-                            if getattr(season_item, "season_number", None) == season:
-                                season_air_date = getattr(season_item, "air_date", None)
+                            if self._season_field(season_item, "season_number") == season:
+                                season_air_date = self._season_field(season_item, "air_date")
                                 if season_air_date:
                                     logger.debug(
                                         f"获取{subscribe.type}订阅 {subscribe.name} "
@@ -710,6 +769,16 @@ class SubscribeAutoSort(_PluginBase):
         except Exception as e:
             logger.error(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期失败: {str(e)}")
         return None
+
+    @staticmethod
+    def _season_field(season_item: Any, key: str) -> Optional[Any]:
+        """
+        读取 season_info 中某一季的字段，兼容 dict（主程序 domain MediaInfo）
+        与对象（旧版 schema）两种形式
+        """
+        if isinstance(season_item, dict):
+            return season_item.get(key)
+        return getattr(season_item, key, None)
 
     @staticmethod
     def _subscribe_media_identity(subscribe: Subscribe) -> Tuple[Optional[str], Optional[str]]:
