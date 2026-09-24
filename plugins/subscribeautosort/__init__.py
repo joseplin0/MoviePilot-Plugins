@@ -25,7 +25,7 @@ class SubscribeAutoSort(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/s_order.png"
     # 插件版本
-    plugin_version = "1.4.6"
+    plugin_version = "1.4.7"
     # 插件作者
     plugin_author = "joseplin0"
     # 作者主页
@@ -651,8 +651,10 @@ class SubscribeAutoSort(_PluginBase):
         电视剧按当前季取该季首播日：当前季取 MediaInfo.number_of_seasons
         （媒体最新季）；从 MediaInfo.season_info 中找
         season_number == 当前季 的季，取其 air_date；
-        该季 air_date 为空（还没出）则返回 None，归到「无排序数据」组保持原顺序；
-        season_info 整体为空或找不到该季则回退 release_date。
+        该季 air_date 为空、或 number_of_seasons 指明有该季但 season_info 中找不到
+        （该季未播出、episodes/air_date 为空被主程序过滤）则返回 None，
+        归到「无排序数据」组保持原顺序；
+        season_info 整体为空或无 number_of_seasons 则回退 release_date。
         电影及无当前季直接用 release_date。
         :param subscribe: 订阅信息
         :return: 上映日期，如果获取失败返回 None
@@ -694,11 +696,13 @@ class SubscribeAutoSort(_PluginBase):
                                     f"第{season}季首播日: 无（该季未播出）"
                                 )
                                 return None
-                        # season_info 中找不到该季，回退 release_date
+                        # number_of_seasons 指明有该季，但 season_info 中找不到
+                        # （该季 episodes/air_date 为空被主程序过滤），视为未播出
                         logger.debug(
                             f"订阅 {subscribe.name} season_info 未找到第{season}季，"
-                            f"回退 release_date: {release_date}"
+                            f"视为未播出，不参与排序"
                         )
+                        return None
             if release_date:
                 logger.debug(f"获取{subscribe.type}订阅 {subscribe.name} 上映日期: {release_date}")
                 return release_date
