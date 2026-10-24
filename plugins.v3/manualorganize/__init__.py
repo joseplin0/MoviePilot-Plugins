@@ -8,12 +8,12 @@ from typing import Any, Optional
 
 from fastapi import Depends
 
-from app import schemas
 from app.api.dependencies.auth import get_current_active_manage_user
+from app.schemas import Response
 from app.sdk.logging import logger
 from app.sdk.plugin import _PluginBase
 
-from .schemas import OrganizeOptionsData, OrganizeRequest, OrganizeResultData
+from .models import OrganizeOptionsData, OrganizeRequest, OrganizeResultData
 from .service import ManualOrganizeService
 
 
@@ -25,7 +25,7 @@ class ManualOrganize(_PluginBase):
     plugin_name = "手动整理"
     plugin_desc = "从近期下载或手工地址触发 MoviePilot 原生手动整理，兼容远程挂载目录"
     plugin_icon = "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/manual_organize.png"
-    plugin_version = "3.0.0"
+    plugin_version = "1.0.0"
     plugin_author = "joseplin0"
     author_url = "https://github.com/joseplin0"
     plugin_order = 20
@@ -98,7 +98,7 @@ class ManualOrganize(_PluginBase):
                 "methods": ["GET"],
                 "auth": "bear",
                 "summary": "读取手动整理来源选项",
-                "response_model": schemas.Response[OrganizeOptionsData],
+                "response_model": Response[OrganizeOptionsData],
                 "dependencies": dependencies,
             },
             {
@@ -107,7 +107,7 @@ class ManualOrganize(_PluginBase):
                 "methods": ["POST"],
                 "auth": "bear",
                 "summary": "预览手动整理结果",
-                "response_model": schemas.Response[OrganizeResultData],
+                "response_model": Response[OrganizeResultData],
                 "dependencies": dependencies,
             },
             {
@@ -116,7 +116,7 @@ class ManualOrganize(_PluginBase):
                 "methods": ["POST"],
                 "auth": "bear",
                 "summary": "执行手动重新整理",
-                "response_model": schemas.Response[OrganizeResultData],
+                "response_model": Response[OrganizeResultData],
                 "dependencies": dependencies,
             },
         ]
@@ -151,21 +151,21 @@ class ManualOrganize(_PluginBase):
         """
         self._enabled = False
 
-    def get_options(self) -> schemas.Response[OrganizeOptionsData]:
+    def get_options(self) -> Response[OrganizeOptionsData]:
         """
         返回近期下载记录、存储类型和有效目录规则。
         """
         try:
             data = ManualOrganizeService(self._history_limit).get_options()
-            return schemas.Response(success=True, data=data)
+            return Response(success=True, data=data)
         except Exception as error:
             logger.exception(f"读取手动整理选项失败：{error}")
-            return schemas.Response(success=False, message="读取近期下载记录失败，请查看插件日志")
+            return Response(success=False, message="读取近期下载记录失败，请查看插件日志")
 
     def preview(
         self,
         request: OrganizeRequest,
-    ) -> schemas.Response[OrganizeResultData]:
+    ) -> Response[OrganizeResultData]:
         """
         预览来源与目录规则生成的整理计划。
 
@@ -177,7 +177,7 @@ class ManualOrganize(_PluginBase):
     def organize(
         self,
         request: OrganizeRequest,
-    ) -> schemas.Response[OrganizeResultData]:
+    ) -> Response[OrganizeResultData]:
         """
         执行原生手动重新整理。
 
@@ -190,7 +190,7 @@ class ManualOrganize(_PluginBase):
         self,
         request: OrganizeRequest,
         preview: bool,
-    ) -> schemas.Response[OrganizeResultData]:
+    ) -> Response[OrganizeResultData]:
         """
         统一处理业务校验、日志脱敏和错误响应。
         """
@@ -199,12 +199,12 @@ class ManualOrganize(_PluginBase):
             success, message, data = (
                 service.preview(request) if preview else service.organize(request)
             )
-            return schemas.Response(success=success, message=message, data=data)
+            return Response(success=success, message=message, data=data)
         except ValueError as error:
-            return schemas.Response(success=False, message=str(error))
+            return Response(success=False, message=str(error))
         except Exception as error:
             logger.exception(f"手动整理执行异常：{error}")
-            return schemas.Response(success=False, message="手动整理执行异常，请查看插件日志")
+            return Response(success=False, message="手动整理执行异常，请查看插件日志")
 
     def _require_enabled(self) -> None:
         """

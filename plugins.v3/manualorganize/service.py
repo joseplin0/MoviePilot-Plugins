@@ -22,7 +22,7 @@ from app.sdk.queries import (
     list_transfer_history,
 )
 
-from .schemas import (
+from .models import (
     DirectoryRootOption,
     OrganizeItemResult,
     OrganizeOptionsData,
