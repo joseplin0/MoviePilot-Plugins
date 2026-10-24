@@ -1,0 +1,17 @@
+{
+  "ManualOrganize": {
+    "name": "手动整理",
+    "description": "从近期下载或手工地址触发 MoviePilot 原生手动整理，兼容远程挂载目录",
+    "labels": "文件整理,远程挂载",
+    "version": "3.0.0",
+    "icon": "https://raw.githubusercontent.com/joseplin0/MoviePilot-Plugins/main/icons/manual_organize.png",
+    "author": "joseplin0",
+    "level": 1,
+    "v3": true,
+    "system_version": ">=3.1.6",
+    "release": true,
+    "history": {
+      "v3.0.0": "新增近期下载选择和手工地址两种整理方式；近期下载直接复用下载文件清单，避免遍历远程挂载目录；整理使用 MoviePilot 原生手动重新整理链路。"
+    }
+  }
+}

@@ -36,6 +36,12 @@ MoviePilot 三方插件：https://github.com/joseplin0/MoviePilot-Plugins
 - 监听源文件删除，刷新飞牛
 - [ ] 使用飞牛接口识别需要删除的媒体库
 
+### 手动整理 (ManualOrganize，仅 V3)
+
+- 从近期下载记录选择来源
+- 支持输入本地挂载路径
+- 复用 MoviePilot 原生手动重新整理链，支持预览和逐文件状态反馈
+
 ## 许可证
 
 本项目采用 MIT 许可证，详见[LICENSE](LICENSE)文件。
